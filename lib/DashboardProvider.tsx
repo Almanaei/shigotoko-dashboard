@@ -66,10 +66,39 @@ export interface Stats {
   teamKPI: string;
 }
 
+export type ProjectStatus = 'planning' | 'in-progress' | 'on-hold' | 'completed' | 'cancelled';
+
+export interface ProjectLog {
+  id: string;
+  projectId: string;
+  userId: string;
+  userName: string;
+  action: string;
+  timestamp: string;
+  details?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  departmentId: string;
+  teamMembers: string[]; // Array of employee IDs
+  startDate: string;
+  dueDate: string;
+  status: ProjectStatus;
+  progress: number;
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
+  budget?: number;
+  logs: ProjectLog[];
+}
+
 export interface DashboardState {
   currentUser: User | null;
   employees: Employee[];
   departments: Department[];
+  projects: Project[];
+  projectLogs: ProjectLog[];
   tasks: Task[];
   stats: Stats;
   notifications: Notification[];
@@ -89,6 +118,11 @@ export const ACTIONS = {
   ADD_DEPARTMENT: 'ADD_DEPARTMENT',
   UPDATE_DEPARTMENT: 'UPDATE_DEPARTMENT',
   DELETE_DEPARTMENT: 'DELETE_DEPARTMENT',
+  SET_PROJECTS: 'SET_PROJECTS',
+  ADD_PROJECT: 'ADD_PROJECT',
+  UPDATE_PROJECT: 'UPDATE_PROJECT',
+  DELETE_PROJECT: 'DELETE_PROJECT',
+  ADD_PROJECT_LOG: 'ADD_PROJECT_LOG',
   SET_TASKS: 'SET_TASKS',
   ADD_TASK: 'ADD_TASK',
   UPDATE_TASK: 'UPDATE_TASK',
@@ -113,6 +147,11 @@ type Action =
   | { type: typeof ACTIONS.ADD_DEPARTMENT; payload: Department }
   | { type: typeof ACTIONS.UPDATE_DEPARTMENT; payload: { id: string; department: Partial<Department> } }
   | { type: typeof ACTIONS.DELETE_DEPARTMENT; payload: string }
+  | { type: typeof ACTIONS.SET_PROJECTS; payload: Project[] }
+  | { type: typeof ACTIONS.ADD_PROJECT; payload: Project }
+  | { type: typeof ACTIONS.UPDATE_PROJECT; payload: { id: string; project: Partial<Project> } }
+  | { type: typeof ACTIONS.DELETE_PROJECT; payload: string }
+  | { type: typeof ACTIONS.ADD_PROJECT_LOG; payload: ProjectLog }
   | { type: typeof ACTIONS.SET_TASKS; payload: Task[] }
   | { type: typeof ACTIONS.ADD_TASK; payload: Task }
   | { type: typeof ACTIONS.UPDATE_TASK; payload: { id: string; task: Partial<Task> } }
@@ -128,6 +167,8 @@ const initialState: DashboardState = {
   currentUser: null,
   employees: [],
   departments: [],
+  projects: [],
+  projectLogs: [],
   tasks: [],
   stats: {
     totalEmployees: 0,
@@ -182,6 +223,35 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return {
         ...state,
         departments: state.departments.filter(department => department.id !== action.payload),
+      };
+    case ACTIONS.SET_PROJECTS:
+      return { ...state, projects: action.payload };
+    case ACTIONS.ADD_PROJECT:
+      return { ...state, projects: [...state.projects, action.payload] };
+    case ACTIONS.UPDATE_PROJECT:
+      return {
+        ...state,
+        projects: state.projects.map(project =>
+          project.id === action.payload.id
+            ? { ...project, ...action.payload.project }
+            : project
+        ),
+      };
+    case ACTIONS.DELETE_PROJECT:
+      return {
+        ...state,
+        projects: state.projects.filter(project => project.id !== action.payload),
+      };
+    case ACTIONS.ADD_PROJECT_LOG:
+      // Add log to specific project and to global logs
+      return {
+        ...state,
+        projects: state.projects.map(project => 
+          project.id === action.payload.projectId
+            ? { ...project, logs: [...project.logs, action.payload] }
+            : project
+        ),
+        projectLogs: [...state.projectLogs, action.payload]
       };
     case ACTIONS.SET_TASKS:
       return { ...state, tasks: action.payload };
@@ -527,11 +597,102 @@ export function initializeMockData(dispatch: React.Dispatch<Action>) {
     teamKPI: '82.10%'
   };
 
+  // Mock projects
+  const mockProjects: Project[] = [
+    {
+      id: 'proj-1',
+      name: 'Website Redesign',
+      description: 'Redesign the company website with a modern UI and improved UX',
+      departmentId: 'dept-2', // Design department
+      teamMembers: ['emp-2', '3'],
+      startDate: '2023-11-01',
+      dueDate: '2024-03-15',
+      status: 'in-progress',
+      progress: 45,
+      priority: 'High',
+      budget: 25000,
+      logs: [
+        {
+          id: 'log-1',
+          projectId: 'proj-1',
+          userId: 'user-1',
+          userName: 'Alex Johnson',
+          action: 'Created project',
+          timestamp: '2023-11-01T10:30:00Z',
+        },
+        {
+          id: 'log-2',
+          projectId: 'proj-1',
+          userId: 'emp-2',
+          userName: 'John Smith',
+          action: 'Updated progress to 45%',
+          timestamp: '2024-01-15T14:22:00Z',
+        }
+      ]
+    },
+    {
+      id: 'proj-2',
+      name: 'Mobile App Development',
+      description: 'Develop a native mobile app for both iOS and Android platforms',
+      departmentId: 'dept-1', // Engineering department
+      teamMembers: ['emp-1', '4', '6'],
+      startDate: '2023-12-01',
+      dueDate: '2024-06-30',
+      status: 'in-progress',
+      progress: 30,
+      priority: 'Urgent',
+      budget: 75000,
+      logs: [
+        {
+          id: 'log-3',
+          projectId: 'proj-2',
+          userId: 'user-1',
+          userName: 'Alex Johnson',
+          action: 'Created project',
+          timestamp: '2023-12-01T09:15:00Z',
+        },
+        {
+          id: 'log-4',
+          projectId: 'proj-2',
+          userId: 'emp-1',
+          userName: 'Sarah Chen',
+          action: 'Added team members',
+          timestamp: '2023-12-05T11:30:00Z',
+          details: 'Added Jennifer Wilson and Sara Johnson to the project team'
+        }
+      ]
+    },
+    {
+      id: 'proj-3',
+      name: 'Q1 Marketing Campaign',
+      description: 'Plan and execute marketing campaign for Q1 2024',
+      departmentId: 'dept-3', // Marketing department
+      teamMembers: ['7'],
+      startDate: '2024-01-01',
+      dueDate: '2024-03-31',
+      status: 'planning',
+      progress: 15,
+      priority: 'Medium',
+      budget: 15000,
+      logs: [
+        {
+          id: 'log-5',
+          projectId: 'proj-3',
+          userId: 'user-1',
+          userName: 'Alex Johnson',
+          action: 'Created project',
+          timestamp: '2023-12-20T13:45:00Z',
+        }
+      ]
+    }
+  ];
+
   dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: mockUser });
   dispatch({ type: ACTIONS.SET_DEPARTMENTS, payload: mockDepartments });
   dispatch({ type: ACTIONS.SET_EMPLOYEES, payload: mockEmployees });
+  dispatch({ type: ACTIONS.SET_PROJECTS, payload: mockProjects });
   dispatch({ type: ACTIONS.SET_TASKS, payload: mockTasks });
   dispatch({ type: ACTIONS.SET_STATS, payload: mockStats });
   dispatch({ type: ACTIONS.SET_NOTIFICATIONS, payload: mockNotifications });
   dispatch({ type: ACTIONS.SET_MESSAGES, payload: mockMessages });
-} 
+}
