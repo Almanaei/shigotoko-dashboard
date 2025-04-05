@@ -11,6 +11,14 @@ export interface User {
   role: string;
 }
 
+export interface Department {
+  id: string;
+  name: string;
+  description: string;
+  employeeCount: number;
+  color: string;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -61,6 +69,7 @@ export interface Stats {
 export interface DashboardState {
   currentUser: User | null;
   employees: Employee[];
+  departments: Department[];
   tasks: Task[];
   stats: Stats;
   notifications: Notification[];
@@ -76,6 +85,10 @@ export const ACTIONS = {
   ADD_EMPLOYEE: 'ADD_EMPLOYEE',
   UPDATE_EMPLOYEE: 'UPDATE_EMPLOYEE',
   DELETE_EMPLOYEE: 'DELETE_EMPLOYEE',
+  SET_DEPARTMENTS: 'SET_DEPARTMENTS',
+  ADD_DEPARTMENT: 'ADD_DEPARTMENT',
+  UPDATE_DEPARTMENT: 'UPDATE_DEPARTMENT',
+  DELETE_DEPARTMENT: 'DELETE_DEPARTMENT',
   SET_TASKS: 'SET_TASKS',
   ADD_TASK: 'ADD_TASK',
   UPDATE_TASK: 'UPDATE_TASK',
@@ -96,6 +109,10 @@ type Action =
   | { type: typeof ACTIONS.ADD_EMPLOYEE; payload: Employee }
   | { type: typeof ACTIONS.UPDATE_EMPLOYEE; payload: { id: string; employee: Partial<Employee> } }
   | { type: typeof ACTIONS.DELETE_EMPLOYEE; payload: string }
+  | { type: typeof ACTIONS.SET_DEPARTMENTS; payload: Department[] }
+  | { type: typeof ACTIONS.ADD_DEPARTMENT; payload: Department }
+  | { type: typeof ACTIONS.UPDATE_DEPARTMENT; payload: { id: string; department: Partial<Department> } }
+  | { type: typeof ACTIONS.DELETE_DEPARTMENT; payload: string }
   | { type: typeof ACTIONS.SET_TASKS; payload: Task[] }
   | { type: typeof ACTIONS.ADD_TASK; payload: Task }
   | { type: typeof ACTIONS.UPDATE_TASK; payload: { id: string; task: Partial<Task> } }
@@ -110,6 +127,7 @@ type Action =
 const initialState: DashboardState = {
   currentUser: null,
   employees: [],
+  departments: [],
   tasks: [],
   stats: {
     totalEmployees: 0,
@@ -146,6 +164,24 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return {
         ...state,
         employees: state.employees.filter(employee => employee.id !== action.payload),
+      };
+    case ACTIONS.SET_DEPARTMENTS:
+      return { ...state, departments: action.payload };
+    case ACTIONS.ADD_DEPARTMENT:
+      return { ...state, departments: [...state.departments, action.payload] };
+    case ACTIONS.UPDATE_DEPARTMENT:
+      return {
+        ...state,
+        departments: state.departments.map(department =>
+          department.id === action.payload.id
+            ? { ...department, ...action.payload.department }
+            : department
+        ),
+      };
+    case ACTIONS.DELETE_DEPARTMENT:
+      return {
+        ...state,
+        departments: state.departments.filter(department => department.id !== action.payload),
       };
     case ACTIONS.SET_TASKS:
       return { ...state, tasks: action.payload };
@@ -227,9 +263,81 @@ export function useDashboard() {
 }
 
 // Mock data initialization
-function initializeMockData(dispatch: DashboardDispatch) {
-  // Mock employee data
+export function initializeMockData(dispatch: React.Dispatch<Action>) {
+  // Current user mock data
+  const mockUser: User = {
+    id: 'user-1',
+    name: 'Alex Johnson',
+    email: 'alex@shigotoko.com',
+    avatar: '/avatars/alex.jpg',
+    role: 'Admin'
+  };
+
+  // Mock departments
+  const mockDepartments: Department[] = [
+    {
+      id: 'dept-1',
+      name: 'Engineering',
+      description: 'Software development and engineering',
+      employeeCount: 12,
+      color: '#3b82f6' // blue-500
+    },
+    {
+      id: 'dept-2',
+      name: 'Design',
+      description: 'UI/UX and graphic design',
+      employeeCount: 8,
+      color: '#8b5cf6' // violet-500
+    },
+    {
+      id: 'dept-3',
+      name: 'Marketing',
+      description: 'Digital marketing and brand management',
+      employeeCount: 6,
+      color: '#10b981' // emerald-500
+    },
+    {
+      id: 'dept-4',
+      name: 'HR',
+      description: 'Human resources and talent acquisition',
+      employeeCount: 4,
+      color: '#f59e0b' // amber-500
+    },
+    {
+      id: 'dept-5',
+      name: 'Finance',
+      description: 'Financial planning and accounting',
+      employeeCount: 5,
+      color: '#ef4444' // red-500
+    }
+  ];
+
+  // Mock employees
   const mockEmployees: Employee[] = [
+    {
+      id: 'emp-1',
+      name: 'Sarah Chen',
+      position: 'Senior Developer',
+      department: 'Engineering',
+      email: 'sarah@shigotoko.com',
+      phone: '+1 (555) 123-4567',
+      avatar: '/avatars/sarah.jpg',
+      status: 'active',
+      joinDate: '2022-03-15',
+      performance: 92
+    },
+    {
+      id: 'emp-2',
+      name: 'John Smith',
+      position: 'UI Designer',
+      department: 'Design',
+      email: 'john@shigotoko.com',
+      phone: '+1 (555) 234-5678',
+      avatar: '/avatars/john.jpg',
+      status: 'active',
+      joinDate: '2022-05-20',
+      performance: 85
+    },
     {
       id: '1',
       name: "Ann Bergson",
@@ -419,16 +527,8 @@ function initializeMockData(dispatch: DashboardDispatch) {
     teamKPI: '82.10%'
   };
 
-  // Mock current user
-  const mockUser: User = {
-    id: 'user-1',
-    name: 'John Doe',
-    email: 'john.doe@example.com',
-    avatar: '/avatar-placeholder.png',
-    role: 'HR Manager'
-  };
-
   dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: mockUser });
+  dispatch({ type: ACTIONS.SET_DEPARTMENTS, payload: mockDepartments });
   dispatch({ type: ACTIONS.SET_EMPLOYEES, payload: mockEmployees });
   dispatch({ type: ACTIONS.SET_TASKS, payload: mockTasks });
   dispatch({ type: ACTIONS.SET_STATS, payload: mockStats });

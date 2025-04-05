@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Users, Calendar, MessageSquare, FileText, Settings, LifeBuoy, LogOut } from 'lucide-react';
+import { Home, Users, Calendar, MessageSquare, FileText, Settings, LifeBuoy, LogOut, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -19,6 +19,7 @@ export default function Sidebar() {
   const navigation: NavItem[] = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Employees', href: '/employees', icon: Users, count: 12 },
+    { name: 'Departments', href: '/departments', icon: Building2, count: 5 },
     { name: 'Schedule', href: '/schedule', icon: Calendar },
     { name: 'Messages', href: '/messages', icon: MessageSquare, count: 5 },
     { name: 'Documents', href: '/documents', icon: FileText },
