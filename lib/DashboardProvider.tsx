@@ -69,22 +69,42 @@ export interface DashboardState {
   error: string | null;
 }
 
-// Types for Actions
-type Action = 
-  | { type: 'SET_CURRENT_USER'; payload: User }
-  | { type: 'SET_EMPLOYEES'; payload: Employee[] }
-  | { type: 'SET_TASKS'; payload: Task[] }
-  | { type: 'UPDATE_TASK'; payload: { id: string; data: Partial<Task> } }
-  | { type: 'ADD_TASK'; payload: Task }
-  | { type: 'DELETE_TASK'; payload: string }
-  | { type: 'SET_STATS'; payload: Stats }
-  | { type: 'SET_NOTIFICATIONS'; payload: Notification[] }
-  | { type: 'ADD_MESSAGE'; payload: Message }
-  | { type: 'SET_MESSAGES'; payload: Message[] }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_ERROR'; payload: string | null };
+// Action types
+export const ACTIONS = {
+  SET_CURRENT_USER: 'SET_CURRENT_USER',
+  SET_EMPLOYEES: 'SET_EMPLOYEES',
+  ADD_EMPLOYEE: 'ADD_EMPLOYEE',
+  UPDATE_EMPLOYEE: 'UPDATE_EMPLOYEE',
+  DELETE_EMPLOYEE: 'DELETE_EMPLOYEE',
+  SET_TASKS: 'SET_TASKS',
+  ADD_TASK: 'ADD_TASK',
+  UPDATE_TASK: 'UPDATE_TASK',
+  DELETE_TASK: 'DELETE_TASK',
+  SET_STATS: 'SET_STATS',
+  SET_NOTIFICATIONS: 'SET_NOTIFICATIONS',
+  SET_MESSAGES: 'SET_MESSAGES',
+  SET_LOADING: 'SET_LOADING',
+  SET_ERROR: 'SET_ERROR',
+};
 
 type DashboardDispatch = (action: Action) => void;
+
+// Action types
+type Action =
+  | { type: typeof ACTIONS.SET_CURRENT_USER; payload: User }
+  | { type: typeof ACTIONS.SET_EMPLOYEES; payload: Employee[] }
+  | { type: typeof ACTIONS.ADD_EMPLOYEE; payload: Employee }
+  | { type: typeof ACTIONS.UPDATE_EMPLOYEE; payload: { id: string; employee: Partial<Employee> } }
+  | { type: typeof ACTIONS.DELETE_EMPLOYEE; payload: string }
+  | { type: typeof ACTIONS.SET_TASKS; payload: Task[] }
+  | { type: typeof ACTIONS.ADD_TASK; payload: Task }
+  | { type: typeof ACTIONS.UPDATE_TASK; payload: { id: string; task: Partial<Task> } }
+  | { type: typeof ACTIONS.DELETE_TASK; payload: string }
+  | { type: typeof ACTIONS.SET_STATS; payload: Stats }
+  | { type: typeof ACTIONS.SET_NOTIFICATIONS; payload: Notification[] }
+  | { type: typeof ACTIONS.SET_MESSAGES; payload: Message[] }
+  | { type: typeof ACTIONS.SET_LOADING; payload: boolean }
+  | { type: typeof ACTIONS.SET_ERROR; payload: string | null };
 
 // Initial state
 const initialState: DashboardState = {
@@ -104,48 +124,65 @@ const initialState: DashboardState = {
   error: null
 };
 
-// Creating Context
-const DashboardStateContext = createContext<DashboardState | undefined>(undefined);
-const DashboardDispatchContext = createContext<DashboardDispatch | undefined>(undefined);
-
-// Reducer function
-function dashboardReducer(state: DashboardState, action: Action): DashboardState {
+// Reducer
+const dashboardReducer = (state: DashboardState, action: Action): DashboardState => {
   switch (action.type) {
-    case 'SET_CURRENT_USER':
+    case ACTIONS.SET_CURRENT_USER:
       return { ...state, currentUser: action.payload };
-    case 'SET_EMPLOYEES':
+    case ACTIONS.SET_EMPLOYEES:
       return { ...state, employees: action.payload };
-    case 'SET_TASKS':
-      return { ...state, tasks: action.payload };
-    case 'UPDATE_TASK':
+    case ACTIONS.ADD_EMPLOYEE:
+      return { ...state, employees: [...state.employees, action.payload] };
+    case ACTIONS.UPDATE_EMPLOYEE:
       return {
         ...state,
-        tasks: state.tasks.map(task => 
-          task.id === action.payload.id 
-            ? { ...task, ...action.payload.data } 
-            : task
-        )
+        employees: state.employees.map(employee =>
+          employee.id === action.payload.id
+            ? { ...employee, ...action.payload.employee }
+            : employee
+        ),
       };
-    case 'ADD_TASK':
+    case ACTIONS.DELETE_EMPLOYEE:
+      return {
+        ...state,
+        employees: state.employees.filter(employee => employee.id !== action.payload),
+      };
+    case ACTIONS.SET_TASKS:
+      return { ...state, tasks: action.payload };
+    case ACTIONS.ADD_TASK:
       return { ...state, tasks: [...state.tasks, action.payload] };
-    case 'DELETE_TASK':
-      return { ...state, tasks: state.tasks.filter(task => task.id !== action.payload) };
-    case 'SET_STATS':
+    case ACTIONS.UPDATE_TASK:
+      return {
+        ...state,
+        tasks: state.tasks.map(task =>
+          task.id === action.payload.id
+            ? { ...task, ...action.payload.task }
+            : task
+        ),
+      };
+    case ACTIONS.DELETE_TASK:
+      return {
+        ...state,
+        tasks: state.tasks.filter(task => task.id !== action.payload),
+      };
+    case ACTIONS.SET_STATS:
       return { ...state, stats: action.payload };
-    case 'SET_NOTIFICATIONS':
+    case ACTIONS.SET_NOTIFICATIONS:
       return { ...state, notifications: action.payload };
-    case 'ADD_MESSAGE':
-      return { ...state, messages: [...state.messages, action.payload] };
-    case 'SET_MESSAGES':
+    case ACTIONS.SET_MESSAGES:
       return { ...state, messages: action.payload };
-    case 'SET_LOADING':
+    case ACTIONS.SET_LOADING:
       return { ...state, loading: action.payload };
-    case 'SET_ERROR':
+    case ACTIONS.SET_ERROR:
       return { ...state, error: action.payload };
     default:
       return state;
   }
-}
+};
+
+// Creating Context
+const DashboardStateContext = createContext<DashboardState | undefined>(undefined);
+const DashboardDispatchContext = createContext<DashboardDispatch | undefined>(undefined);
 
 // Provider component
 export function DashboardProvider({ children }: { children: ReactNode }) {
@@ -391,10 +428,10 @@ function initializeMockData(dispatch: DashboardDispatch) {
     role: 'HR Manager'
   };
 
-  dispatch({ type: 'SET_CURRENT_USER', payload: mockUser });
-  dispatch({ type: 'SET_EMPLOYEES', payload: mockEmployees });
-  dispatch({ type: 'SET_TASKS', payload: mockTasks });
-  dispatch({ type: 'SET_STATS', payload: mockStats });
-  dispatch({ type: 'SET_NOTIFICATIONS', payload: mockNotifications });
-  dispatch({ type: 'SET_MESSAGES', payload: mockMessages });
+  dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: mockUser });
+  dispatch({ type: ACTIONS.SET_EMPLOYEES, payload: mockEmployees });
+  dispatch({ type: ACTIONS.SET_TASKS, payload: mockTasks });
+  dispatch({ type: ACTIONS.SET_STATS, payload: mockStats });
+  dispatch({ type: ACTIONS.SET_NOTIFICATIONS, payload: mockNotifications });
+  dispatch({ type: ACTIONS.SET_MESSAGES, payload: mockMessages });
 } 
