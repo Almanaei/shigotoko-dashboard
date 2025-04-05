@@ -228,6 +228,66 @@ function initializeMockData(dispatch: DashboardDispatch) {
       status: "active",
       joinDate: "2022-01-01",
       performance: 88
+    },
+    {
+      id: '4',
+      name: "Jennifer Wilson",
+      position: "Frontend Developer",
+      department: "Engineering",
+      email: "jennifer.wilson@example.com",
+      phone: "+1-202-555-0104",
+      avatar: "/avatar-placeholder.png",
+      status: "active",
+      joinDate: "2020-08-15",
+      performance: 92
+    },
+    {
+      id: '5',
+      name: "Michael Chen",
+      position: "Backend Developer",
+      department: "Engineering",
+      email: "michael.chen@example.com",
+      phone: "+1-202-555-0105",
+      avatar: "/avatar-placeholder.png",
+      status: "on-leave",
+      joinDate: "2019-11-05",
+      performance: 78
+    },
+    {
+      id: '6',
+      name: "Sara Johnson",
+      position: "DevOps Engineer",
+      department: "Engineering",
+      email: "sara.johnson@example.com",
+      phone: "+1-202-555-0106",
+      avatar: "/avatar-placeholder.png",
+      status: "active",
+      joinDate: "2021-06-22",
+      performance: 81
+    },
+    {
+      id: '7',
+      name: "David Kim",
+      position: "Marketing Specialist",
+      department: "Marketing",
+      email: "david.kim@example.com",
+      phone: "+1-202-555-0107",
+      avatar: "/avatar-placeholder.png",
+      status: "inactive",
+      joinDate: "2020-03-10",
+      performance: 65
+    },
+    {
+      id: '8',
+      name: "Melissa Garcia",
+      position: "HR Manager",
+      department: "HR",
+      email: "melissa.garcia@example.com",
+      phone: "+1-202-555-0108",
+      avatar: "/avatar-placeholder.png",
+      status: "active",
+      joinDate: "2018-07-19",
+      performance: 94
     }
   ];
 

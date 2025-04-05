@@ -3,6 +3,7 @@
 import { Home, Users, Calendar, MessageSquare, FileText, Settings, LifeBuoy, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 interface NavItem {
   name: string;
@@ -13,6 +14,7 @@ interface NavItem {
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const pathname = usePathname();
   
   const navigation: NavItem[] = [
     { name: 'Dashboard', href: '/', icon: Home },
@@ -63,13 +65,13 @@ export default function Sidebar() {
               key={item.name}
               href={item.href}
               className={`
-                ${item.href === '/' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-300'}
+                ${item.href === pathname ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-300'}
                 group flex items-center px-2 py-2 text-sm font-medium rounded-md
               `}
             >
               <item.icon
                 className={`
-                  ${item.href === '/' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400'}
+                  ${item.href === pathname ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400'}
                   ${isCollapsed ? 'mx-auto' : 'mr-3'}
                   h-5 w-5 flex-shrink-0
                 `}
