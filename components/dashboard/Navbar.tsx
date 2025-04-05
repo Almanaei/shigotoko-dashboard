@@ -8,12 +8,41 @@ import { useTheme } from '@/lib/ThemeProvider';
 export default function Navbar() {
   const { state } = useDashboard();
   const { currentUser, notifications } = state;
-  const { theme, toggleTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // Safely try to use ThemeProvider
+  let themeContext;
+  try {
+    themeContext = useTheme();
+  } catch (error) {
+    // Fallback to local state if ThemeProvider is not available
+    themeContext = {
+      theme: isDarkMode ? 'dark' : 'light',
+      toggleTheme: () => {
+        const newMode = !isDarkMode;
+        setIsDarkMode(newMode);
+        if (typeof window !== 'undefined') {
+          const root = window.document.documentElement;
+          root.classList.remove('light', 'dark');
+          root.classList.add(newMode ? 'dark' : 'light');
+          localStorage.setItem('theme', newMode ? 'dark' : 'light');
+        }
+      }
+    };
+  }
+  
+  const { theme, toggleTheme } = themeContext;
   
   // Handle mounted state to prevent hydration mismatch
   useEffect(() => {
     setMounted(true);
+    // Initialize dark mode from localStorage if ThemeProvider failed
+    if (typeof window !== 'undefined' && !themeContext) {
+      const savedTheme = localStorage.getItem('theme');
+      const initialDarkMode = savedTheme === 'dark';
+      setIsDarkMode(initialDarkMode);
+    }
   }, []);
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
