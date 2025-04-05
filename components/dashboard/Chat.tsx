@@ -8,12 +8,18 @@ import { ACTIONS } from '@/lib/DashboardProvider';
 
 export default function Chat() {
   const { state, dispatch } = useDashboard();
-  const { messages, currentUser } = state;
+  const { messages, currentUser, employees } = state;
   const [newMessage, setNewMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState<{[key: string]: boolean}>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
+  
+  // Mock active users (in a real app, this would come from a backend/websocket)
+  const activeUsers = [
+    { id: currentUser?.id || 'user-1', name: currentUser?.name || 'Alex Johnson', avatar: currentUser?.avatar || '/avatars/alex.jpg' },
+    ...employees.slice(0, 3).map(emp => ({ id: emp.id, name: emp.name, avatar: emp.avatar }))
+  ];
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -41,56 +47,70 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Generate a bot response based on user message
-  const generateResponse = (userMessage: string): string => {
-    const keywords = {
-      hello: "Hello! How can I help you today?",
-      hi: "Hi there! What can I assist you with?",
-      help: "I'm here to help! What do you need assistance with?",
-      task: "You can create or manage tasks in the Task Board section of the dashboard.",
-      project: "You can view and manage all projects in the Projects page. Would you like me to show you how?",
-      employee: "Employee information can be found in the Employees page. You can add, edit, or view employee details there.",
-      department: "You can manage departments in the Departments page, including creating new ones or assigning employees.",
-      schedule: "The Schedule page shows a calendar view of your projects and deadlines.",
-      message: "You can send messages to team members using this chat interface.",
-      settings: "You can adjust your profile and application settings in the Settings page.",
-      dark: "You can toggle between light and dark mode using the moon/sun icon in the top bar.",
-      light: "You can toggle between light and dark mode using the moon/sun icon in the top bar.",
-      logout: "To logout, you can click your profile icon in the top right and select Logout.",
-      thanks: "You're welcome! Let me know if you need anything else.",
-      thank: "You're welcome! Let me know if you need anything else.",
-    };
-
-    // Default responses if no keyword match
-    const defaultResponses = [
-      "I'm here to help with your dashboard needs. What would you like to know?",
-      "How can I assist you with the dashboard today?",
-      "Let me know if you need help navigating the dashboard or managing your data.",
-      "I can help you with tasks, projects, employees, and other dashboard features. What do you need?",
-    ];
-
-    // Check for keyword matches
-    const lowerMessage = userMessage.toLowerCase();
-    
-    for (const [keyword, response] of Object.entries(keywords)) {
-      if (lowerMessage.includes(keyword)) {
-        return response;
+  // Simulate someone typing (for demo purposes)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Randomly have someone start typing
+      if (Math.random() > 0.9 && Object.keys(isTyping).length === 0) {
+        const randomUser = employees[Math.floor(Math.random() * employees.length)];
+        if (randomUser && randomUser.id !== currentUser?.id) {
+          setIsTyping(prev => ({ ...prev, [randomUser.id]: true }));
+          
+          // Simulate typing duration
+          setTimeout(() => {
+            setIsTyping(prev => {
+              const newState = { ...prev };
+              delete newState[randomUser.id];
+              
+              // 50% chance to actually send a message after typing
+              if (Math.random() > 0.5) {
+                const randomMessages = [
+                  "Has anyone looked at the Q2 projections yet?",
+                  "I just updated the project timeline in the schedule.",
+                  "Can someone review my latest design mockups?",
+                  "The client meeting went well today!",
+                  "Who's handling the deployment tomorrow?",
+                  "Just a reminder about the team meeting at 3pm.",
+                  "Great work on the latest release, team!",
+                  "I need help with the backend integration.",
+                  "Check out the updated documentation in the shared folder.",
+                  "Anyone available for a quick call?"
+                ];
+                
+                const message = {
+                  id: `msg-${Date.now()}`,
+                  content: randomMessages[Math.floor(Math.random() * randomMessages.length)],
+                  sender: randomUser.id,
+                  senderName: randomUser.name,
+                  timestamp: new Date().toISOString(),
+                };
+                
+                dispatch({
+                  type: ACTIONS.ADD_MESSAGE,
+                  payload: message
+                });
+              }
+              
+              return newState;
+            });
+          }, 2000 + Math.random() * 3000);
+        }
       }
-    }
-    
-    // If no match, return a random default response
-    return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
-  };
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [employees, currentUser, dispatch, isTyping]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (newMessage.trim() === '') return;
+    if (newMessage.trim() === '' || !currentUser) return;
     
     const message = {
       id: `msg-${Date.now()}`,
       content: newMessage,
-      sender: 'user' as const,
+      sender: currentUser.id,
+      senderName: currentUser.name,
       timestamp: new Date().toISOString(),
     };
     
@@ -100,25 +120,6 @@ export default function Chat() {
     });
     
     setNewMessage('');
-    setIsTyping(true);
-    
-    // Simulate a response after a short delay
-    const responseDelay = 1000 + Math.random() * 1000; // Random delay between 1-2 seconds
-    setTimeout(() => {
-      const response = {
-        id: `msg-${Date.now()}`,
-        content: generateResponse(message.content),
-        sender: 'assistant' as const,
-        timestamp: new Date().toISOString(),
-      };
-      
-      dispatch({
-        type: ACTIONS.ADD_MESSAGE,
-        payload: response
-      });
-      
-      setIsTyping(false);
-    }, responseDelay);
   };
 
   // Format message timestamp
@@ -135,18 +136,89 @@ export default function Chat() {
     return formatDistanceToNow(messageDate, { addSuffix: true });
   };
 
+  // Modify this function to better handle our updated Message interface
+  const getSenderInfo = (senderId: string) => {
+    // Check if it's a legacy 'user' or 'assistant' type
+    if (senderId === 'user') {
+      return {
+        name: currentUser?.name || 'You',
+        avatar: currentUser?.avatar || '/avatar-placeholder.png',
+        isCurrentUser: true
+      };
+    }
+    
+    if (senderId === 'assistant') {
+      return {
+        name: 'Assistant',
+        avatar: '/avatars/assistant.png',
+        isCurrentUser: false
+      };
+    }
+    
+    // Check if it's the current user
+    if (currentUser && senderId === currentUser.id) {
+      return {
+        name: 'You',
+        avatar: currentUser.avatar,
+        isCurrentUser: true
+      };
+    }
+    
+    // Look in employees
+    const employee = employees.find(emp => emp.id === senderId);
+    if (employee) {
+      return {
+        name: employee.name,
+        avatar: employee.avatar,
+        isCurrentUser: false
+      };
+    }
+    
+    // Fallback to senderName if available in the message
+    return {
+      name: 'Unknown User',
+      avatar: '/avatar-placeholder.png',
+      isCurrentUser: false
+    };
+  };
+
+  // Get initials from name
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
   return (
     <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark flex flex-col h-full animate-slide-in">
       {/* Chat header */}
       <div className="border-b border-gray-100 dark:border-dark-border p-3 flex justify-between items-center">
         <h2 className="text-sm font-medium text-gray-900 dark:text-white flex items-center">
           <MessagesSquare className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
-          Team Chat
+          Team Chat • {activeUsers.length} online
         </h2>
         <div className="flex -space-x-2">
-          <div className="h-6 w-6 rounded-full bg-blue-500 border-2 border-white dark:border-dark-card flex items-center justify-center text-white text-xs">JD</div>
-          <div className="h-6 w-6 rounded-full bg-green-500 border-2 border-white dark:border-dark-card flex items-center justify-center text-white text-xs">SK</div>
-          <div className="h-6 w-6 rounded-full bg-purple-500 border-2 border-white dark:border-dark-card flex items-center justify-center text-white text-xs">MP</div>
+          {activeUsers.slice(0, 3).map((user, index) => (
+            <div 
+              key={user.id}
+              className={`h-6 w-6 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center text-white text-xs`}
+              style={{ 
+                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b'][index % 4],
+                zIndex: activeUsers.length - index
+              }}
+              title={user.name}
+            >
+              {getInitials(user.name)}
+            </div>
+          ))}
+          {activeUsers.length > 3 && (
+            <div className="h-6 w-6 rounded-full bg-gray-500 border-2 border-white dark:border-dark-card flex items-center justify-center text-white text-xs">
+              +{activeUsers.length - 3}
+            </div>
+          )}
         </div>
       </div>
       
@@ -163,9 +235,9 @@ export default function Chat() {
               <div className="bg-blue-100 dark:bg-blue-900/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                 <MessagesSquare className="h-8 w-8 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Welcome to Team Chat</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Team Chat</h3>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Send a message to get started. You can chat with your team or ask for assistance.
+                Chat with your team members in real-time. Send a message to get started.
               </p>
             </div>
           </div>
@@ -174,67 +246,107 @@ export default function Chat() {
         {/* Chat messages */}
         {messages.length > 0 && (
           <div className="space-y-4">
-            {messages.map((message) => (
-              <div 
-                key={message.id} 
-                className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} group`}
-              >
-                <div className="flex items-end max-w-[80%]">
-                  {/* Avatar for assistant messages */}
-                  {message.sender !== 'user' && (
-                    <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2 mb-1 flex-shrink-0">
-                      AI
+            {messages.map((message) => {
+              const senderInfo = getSenderInfo(message.sender);
+              const isCurrentUser = senderInfo.isCurrentUser;
+              
+              return (
+                <div 
+                  key={message.id} 
+                  className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} group`}
+                >
+                  <div className="flex items-end max-w-[80%]">
+                    {/* Avatar for other users' messages */}
+                    {!isCurrentUser && (
+                      <div 
+                        className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2 mb-1 flex-shrink-0 overflow-hidden"
+                        style={{
+                          backgroundColor: message.sender.charCodeAt(0) % 2 === 0 ? '#3b82f6' : 
+                                         message.sender.charCodeAt(0) % 3 === 0 ? '#10b981' : 
+                                         message.sender.charCodeAt(0) % 5 === 0 ? '#8b5cf6' : '#f59e0b'
+                        }}
+                      >
+                        {senderInfo.avatar ? 
+                          <img src={senderInfo.avatar} alt={senderInfo.name} className="w-full h-full object-cover" /> :
+                          getInitials(senderInfo.name)
+                        }
+                      </div>
+                    )}
+                    
+                    {/* Message bubble */}
+                    <div 
+                      className={`${
+                        isCurrentUser 
+                          ? 'bg-blue-500 text-white rounded-tl-2xl rounded-tr-sm'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tr-2xl rounded-tl-sm'
+                      } p-3 rounded-bl-2xl rounded-br-2xl shadow-sm`}
+                    >
+                      <div className="flex items-start mb-1">
+                        <span className="font-medium text-sm">
+                          {senderInfo.name}
+                        </span>
+                      </div>
+                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                      <div className={`text-xs opacity-70 mt-1 text-right ${
+                        isCurrentUser ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
+                      }`}>
+                        {formatMessageTime(message.timestamp)}
+                      </div>
                     </div>
-                  )}
-                  
-                  {/* Message bubble */}
-                  <div 
-                    className={`${
-                      message.sender === 'user' 
-                        ? 'bg-blue-500 text-white rounded-tl-2xl rounded-tr-sm'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tr-2xl rounded-tl-sm'
-                    } p-3 rounded-bl-2xl rounded-br-2xl shadow-sm`}
-                  >
-                    <div className="flex items-start mb-1">
-                      <span className="font-medium text-sm">
-                        {message.sender === 'user' ? 'You' : 'Assistant'}
-                      </span>
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                    <div className={`text-xs opacity-70 mt-1 text-right ${
-                      message.sender === 'user' ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
-                    }`}>
-                      {formatMessageTime(message.timestamp)}
-                    </div>
+                    
+                    {/* Avatar for current user's messages */}
+                    {isCurrentUser && (
+                      <div className="h-8 w-8 rounded-full bg-gray-500 dark:bg-gray-600 flex items-center justify-center text-white text-xs ml-2 mb-1 flex-shrink-0 overflow-hidden">
+                        {currentUser?.avatar ? 
+                          <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" /> :
+                          getInitials(currentUser?.name || 'U')
+                        }
+                      </div>
+                    )}
                   </div>
-                  
-                  {/* Avatar for user messages */}
-                  {message.sender === 'user' && (
-                    <div className="h-8 w-8 rounded-full bg-gray-500 dark:bg-gray-600 flex items-center justify-center text-white text-xs ml-2 mb-1 flex-shrink-0">
-                      {currentUser?.name.charAt(0) || 'U'}
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             
-            {/* Typing indicator */}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="flex items-end">
-                  <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2 flex-shrink-0">
-                    AI
-                  </div>
-                  <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-tr-2xl rounded-bl-2xl rounded-br-2xl shadow-sm">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '0ms'}}></div>
-                      <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '150ms'}}></div>
-                      <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '300ms'}}></div>
+            {/* Typing indicators */}
+            {Object.entries(isTyping).map(([userId, isTyping]) => {
+              if (!isTyping) return null;
+              
+              const typingUser = employees.find(emp => emp.id === userId);
+              if (!typingUser) return null;
+              
+              return (
+                <div className="flex justify-start" key={`typing-${userId}`}>
+                  <div className="flex items-end">
+                    <div 
+                      className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs mr-2 flex-shrink-0 overflow-hidden"
+                      style={{
+                        backgroundColor: userId.charCodeAt(0) % 2 === 0 ? '#3b82f6' : 
+                                        userId.charCodeAt(0) % 3 === 0 ? '#10b981' : 
+                                        userId.charCodeAt(0) % 5 === 0 ? '#8b5cf6' : '#f59e0b'
+                      }}
+                    >
+                      {typingUser.avatar ? 
+                        <img src={typingUser.avatar} alt={typingUser.name} className="w-full h-full object-cover" /> :
+                        getInitials(typingUser.name)
+                      }
+                    </div>
+                    <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-tr-2xl rounded-bl-2xl rounded-br-2xl shadow-sm">
+                      <div className="flex flex-col">
+                        <div className="text-xs font-medium text-gray-800 dark:text-gray-200 mb-1">
+                          {typingUser.name}
+                        </div>
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '0ms'}}></div>
+                          <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '150ms'}}></div>
+                          <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '300ms'}}></div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         )}
         
@@ -264,6 +376,28 @@ export default function Chat() {
         <div ref={messagesEndRef} />
       </div>
       
+      {/* Active users indicator - horizontal scrollable */}
+      <div className="border-t border-gray-100 dark:border-dark-border p-2 overflow-x-auto hide-scrollbar">
+        <div className="flex space-x-2">
+          {activeUsers.map(user => (
+            <div key={user.id} className="flex flex-col items-center">
+              <div className="relative">
+                <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                  {user.avatar ? 
+                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" /> :
+                    <span className="text-xs font-medium">{getInitials(user.name)}</span>
+                  }
+                </div>
+                <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-green-500 border border-white dark:border-dark-card"></div>
+              </div>
+              <span className="text-xs mt-1 max-w-[60px] truncate">
+                {user.id === currentUser?.id ? 'You' : user.name.split(' ')[0]}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      
       {/* Message input */}
       <div className="border-t border-gray-100 dark:border-dark-border p-3">
         <form onSubmit={handleSendMessage} className="flex items-center gap-2">
@@ -280,7 +414,6 @@ export default function Chat() {
             className="flex-1 py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-200"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            disabled={isTyping}
           />
           
           <button 
@@ -293,17 +426,13 @@ export default function Chat() {
           <button 
             type="submit"
             className={`inline-flex items-center justify-center p-2 rounded-lg shadow-sm text-white ${
-              newMessage.trim() === '' || isTyping
+              newMessage.trim() === ''
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800'
             }`}
-            disabled={newMessage.trim() === '' || isTyping}
+            disabled={newMessage.trim() === ''}
           >
-            {isTyping ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
+            <Send className="h-4 w-4" />
           </button>
         </form>
       </div>

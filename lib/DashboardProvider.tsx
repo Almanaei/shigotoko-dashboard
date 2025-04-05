@@ -45,7 +45,8 @@ export interface Task {
 export interface Message {
   id: string;
   content: string;
-  sender: 'user' | 'assistant';
+  sender: string;
+  senderName?: string;
   timestamp: string;
 }
 
@@ -130,6 +131,7 @@ export const ACTIONS = {
   SET_STATS: 'SET_STATS',
   SET_NOTIFICATIONS: 'SET_NOTIFICATIONS',
   SET_MESSAGES: 'SET_MESSAGES',
+  ADD_MESSAGE: 'ADD_MESSAGE',
   SET_LOADING: 'SET_LOADING',
   SET_ERROR: 'SET_ERROR',
 };
@@ -159,6 +161,7 @@ type Action =
   | { type: typeof ACTIONS.SET_STATS; payload: Stats }
   | { type: typeof ACTIONS.SET_NOTIFICATIONS; payload: Notification[] }
   | { type: typeof ACTIONS.SET_MESSAGES; payload: Message[] }
+  | { type: typeof ACTIONS.ADD_MESSAGE; payload: Message }
   | { type: typeof ACTIONS.SET_LOADING; payload: boolean }
   | { type: typeof ACTIONS.SET_ERROR; payload: string | null };
 
@@ -277,6 +280,8 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return { ...state, notifications: action.payload };
     case ACTIONS.SET_MESSAGES:
       return { ...state, messages: action.payload };
+    case ACTIONS.ADD_MESSAGE:
+      return { ...state, messages: [...state.messages, action.payload] };
     case ACTIONS.SET_LOADING:
       return { ...state, loading: action.payload };
     case ACTIONS.SET_ERROR:
@@ -542,21 +547,31 @@ export function initializeMockData(dispatch: React.Dispatch<Action>) {
   const mockMessages: Message[] = [
     {
       id: 'msg-1',
-      content: 'Hello! How can I help you today?',
-      sender: 'assistant',
+      content: 'Welcome to the team chat! Feel free to ask any questions.',
+      sender: 'emp-1', // Sarah Chen
+      senderName: 'Sarah Chen',
       timestamp: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
     },
     {
       id: 'msg-2',
-      content: 'I need help with the employee onboarding process.',
-      sender: 'user',
+      content: 'Thanks! I need some help with the onboarding process.',
+      sender: mockUser.id,
+      senderName: mockUser.name,
       timestamp: new Date(Date.now() - 3000000).toISOString() // 50 minutes ago
     },
     {
       id: 'msg-3',
       content: 'Sure, I can help with that. What specific part of the onboarding process do you need assistance with?',
-      sender: 'assistant',
+      sender: 'emp-1', // Sarah Chen
+      senderName: 'Sarah Chen',
       timestamp: new Date(Date.now() - 2700000).toISOString() // 45 minutes ago
+    },
+    {
+      id: 'msg-4',
+      content: 'I just added some new design mockups to the shared folder. Can everyone take a look when you get a chance?',
+      sender: 'emp-2', // John Smith
+      senderName: 'John Smith',
+      timestamp: new Date(Date.now() - 1800000).toISOString() // 30 minutes ago
     }
   ];
 
