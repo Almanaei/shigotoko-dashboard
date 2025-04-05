@@ -1,29 +1,25 @@
 import type { Metadata } from "next";
-import { Inter, Roboto } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: '--font-inter' });
-const roboto = Roboto({ 
-  weight: ['400', '500', '700'],
-  subsets: ["latin"],
-  variable: '--font-roboto'
-});
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Shigotoko | Employee Management Dashboard",
-  description: "Modern dashboard for employee management system with intuitive navigation.",
+  title: "Shigotoko Dashboard",
+  description: "A modern HR management dashboard",
+  icons: {
+    icon: '/favicon.ico',
+  }
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en">
-      <body className={`${inter.variable} ${roboto.variable} font-sans`}>
-        {children}
-      </body>
+    <html lang="en" className="light">
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
