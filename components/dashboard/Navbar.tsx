@@ -3,34 +3,18 @@
 import { Bell, Search, Calendar, MessageCircle, Moon, Sun } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useDashboard } from '@/lib/DashboardProvider';
+import { useTheme } from '@/lib/ThemeProvider';
 
 export default function Navbar() {
   const { state } = useDashboard();
   const { currentUser, notifications } = state;
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   
-  // Check if system prefers dark mode or if it was previously set
+  // Handle mounted state to prevent hydration mismatch
   useEffect(() => {
-    const isDark = localStorage.getItem('darkMode') === 'true' || 
-                   window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setIsDarkMode(isDark);
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    }
+    setMounted(true);
   }, []);
-  
-  // Toggle dark mode
-  const toggleDarkMode = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    localStorage.setItem('darkMode', String(newMode));
-    
-    if (newMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
@@ -50,16 +34,18 @@ export default function Navbar() {
       </div>
       
       <div className="flex items-center gap-4">
-        <button 
-          className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-          onClick={toggleDarkMode}
-        >
-          {isDarkMode ? (
-            <Sun className="h-5 w-5" />
-          ) : (
-            <Moon className="h-5 w-5" />
-          )}
-        </button>
+        {mounted && (
+          <button 
+            className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            onClick={toggleTheme}
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-5 w-5" />
+            ) : (
+              <Moon className="h-5 w-5" />
+            )}
+          </button>
+        )}
         
         <button className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
           <Calendar className="h-5 w-5" />
