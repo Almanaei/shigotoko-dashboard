@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { API } from '@/lib/api';
@@ -16,35 +16,24 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  // Flag to prevent multiple redirects
-  const redirectingRef = useRef(false);
-  const initialCheckDoneRef = useRef(false);
 
-  // Modified session check with safeguards
+  // Basic session check - once on mount only
   useEffect(() => {
-    // Only run once
-    if (initialCheckDoneRef.current) return;
-    initialCheckDoneRef.current = true;
-    
     const checkSession = async () => {
       try {
-        // Don't check if we're already redirecting
-        if (redirectingRef.current) return;
-        
         const user = await API.auth.getCurrentUser();
-        if (user && !redirectingRef.current) {
-          // Set flag to prevent multiple redirects
-          redirectingRef.current = true;
-          // Simple redirect without reloading
-          router.push('/');
+        if (user) {
+          // Redirect to dashboard if already logged in
+          window.location.href = '/';
         }
       } catch (error) {
         // User is not logged in, do nothing
+        console.log('User not logged in, showing login form');
       }
     };
 
     checkSession();
-  }, [router]);
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -55,7 +44,7 @@ export default function LoginPage() {
     setError(null);
   };
 
-  // Fixed login submission without setTimeout
+  // Simplified login handler with API client
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -65,39 +54,20 @@ export default function LoginPage() {
     }
     
     try {
-      // Prevent multiple submissions
-      if (loading || redirectingRef.current) return;
-      
       setLoading(true);
-      console.log('Attempting login with:', formData.email);
+      console.log('Login attempt with:', formData.email);
       
-      // Direct fetch to API to ensure proper cookie handling
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-        credentials: 'include'  // Important for cookies
-      });
+      // Use the API client for login
+      const user = await API.auth.login(formData);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Login failed');
-      }
+      console.log('Login successful, redirecting...');
       
-      const userData = await response.json();
-      console.log('Login successful, user data:', userData);
-      
-      // Set redirecting flag to prevent repeated redirects
-      redirectingRef.current = true;
-      
-      // Use router for clean client-side navigation
-      router.push('/');
+      // Direct navigation to dashboard
+      window.location.href = '/';
       
     } catch (err: any) {
       console.error('Login error:', err);
-      setError(err.message || 'Invalid email or password. Please try again.');
+      setError('Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
