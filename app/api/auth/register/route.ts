@@ -7,6 +7,8 @@ import { v4 as uuidv4 } from 'uuid';
 export async function POST(request: NextRequest) {
   try {
     const { name, email, password, role = 'User' } = await request.json();
+    
+    console.log('Registration request received for:', { name, email, role });
 
     // Validate input
     if (!name || !email || !password) {
@@ -43,6 +45,8 @@ export async function POST(request: NextRequest) {
         avatar: `/avatars/default-${Math.floor(Math.random() * 5) + 1}.jpg`, // Random default avatar
       },
     });
+    
+    console.log('User created:', { id: user.id, name: user.name, role: user.role });
 
     // Generate session token for automatic login
     const sessionToken = uuidv4();
@@ -55,6 +59,8 @@ export async function POST(request: NextRequest) {
         expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
       },
     });
+    
+    console.log('Session created with token:', sessionToken);
 
     // Create response with user data (excluding password)
     const { password: _, ...userWithoutPassword } = user;
@@ -70,6 +76,8 @@ export async function POST(request: NextRequest) {
       maxAge: 30 * 24 * 60 * 60, // 30 days
       sameSite: 'strict',
     });
+    
+    console.log('Registration complete, returning user:', userWithoutPassword);
     
     return response;
   } catch (error) {

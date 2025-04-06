@@ -44,49 +44,46 @@ export default function RegisterPage() {
     setError(null);
   };
 
-  const validateForm = () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Reset errors before submission
+    setError(null);
+    
+    // Form validation
     if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
       setError('All fields are required');
-      return false;
+      return;
     }
     
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
-      return false;
+      return;
     }
     
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      return false;
-    }
-    
+    // Simple email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       setError('Please enter a valid email address');
-      return false;
-    }
-    
-    return true;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
       return;
     }
     
     try {
       setLoading(true);
-      // Exclude confirmPassword from the data sent to API
-      const { confirmPassword, ...registrationData } = formData;
       
-      await API.auth.register(registrationData);
+      // Register the user
+      const userData = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password
+      };
       
-      // Show success message
+      const user = await API.auth.register(userData);
+      
+      // Registration successful
       setSuccess(true);
       
-      // Redirect to dashboard after a short delay
+      // Wait a moment to show success message before redirecting
       setTimeout(() => {
         router.push('/');
       }, 1500);
