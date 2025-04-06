@@ -19,56 +19,6 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // CRITICAL FIX: Directly handle the almannaei90@gmail.com case
-    if (email === 'almannaei90@gmail.com') {
-      console.log('Special handling for almannaei90@gmail.com');
-      
-      // Create a hardcoded user for Salem Almannai
-      const salemUser = {
-        id: 'salem-id',
-        name: 'Salem Almannai',
-        email: 'almannaei90@gmail.com',
-        password: 'password123',
-        role: 'Admin',
-        department: 'Engineering',
-        avatar: '/avatars/default-2.jpg',
-      };
-      
-      // Only proceed if password matches
-      if (password !== 'password123') {
-        console.log('Password mismatch for almannaei90@gmail.com');
-        return NextResponse.json(
-          { error: 'Invalid email or password' },
-          { status: 401 }
-        );
-      }
-      
-      console.log('Password matched for almannaei90@gmail.com, creating session');
-      
-      // Generate a special identifiable session token for Salem
-      const sessionToken = `salem-${uuidv4()}`;
-      
-      // Create a response with user data
-      const { password: _, ...userWithoutPassword } = salemUser;
-      const response = NextResponse.json(userWithoutPassword);
-      
-      // Set the cookie in the response
-      response.cookies.set({
-        name: 'session-token',
-        value: sessionToken,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-        path: '/',
-      });
-      
-      console.log('Successfully created hardcoded session for Salem Almannai with token:', sessionToken);
-      return response;
-    }
-    
-    // For all other email addresses, proceed with normal flow
-    
     // Find user by email
     const user = await prisma.user.findUnique({
       where: { email },
@@ -130,42 +80,41 @@ export async function GET(request: NextRequest) {
     // Get session token from cookie
     const sessionToken = request.cookies.get('session-token')?.value;
     
+    console.log('GET /api/auth - Session token exists:', !!sessionToken);
+    
     if (!sessionToken) {
+      console.log('GET /api/auth - No session token found in cookies');
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
       );
     }
     
-    // SPECIAL HANDLING for the Salem Almannai hardcoded user
-    // If the cookie exists but we couldn't find the session in the database,
-    // this might be our hardcoded user who has an active cookie
-    if (sessionToken.startsWith('salem-') || sessionToken === 'salem-session') {
-      console.log('Special case: Session token appears to be for Salem Almannai');
-      
-      // Return the hardcoded user without password
-      const salemUser = {
-        id: 'salem-id',
-        name: 'Salem Almannai',
-        email: 'almannaei90@gmail.com',
-        role: 'Admin',
-        department: 'Engineering',
-        avatar: '/avatars/default-2.jpg',
-      };
-      
-      return NextResponse.json(salemUser);
-    }
+    console.log('GET /api/auth - Looking up session with token:', sessionToken.substring(0, 8) + '...');
     
-    // Normal flow for database users
     // Find session
     const session = await prisma.session.findUnique({
       where: { id: sessionToken },
       include: { user: true },
     });
     
+    console.log('GET /api/auth - Session found:', !!session);
+    
     // Check if session exists and is not expired
-    if (!session || session.expires < new Date()) {
+    if (!session) {
+      console.log('GET /api/auth - Session not found in database');
       // Clear invalid cookie
+      const response = NextResponse.json(
+        { error: 'Session not found' },
+        { status: 401 }
+      );
+      response.cookies.delete('session-token');
+      return response;
+    }
+    
+    if (session.expires < new Date()) {
+      console.log('GET /api/auth - Session expired, expires:', session.expires, 'current time:', new Date());
+      // Clear expired cookie
       const response = NextResponse.json(
         { error: 'Session expired' },
         { status: 401 }
@@ -176,6 +125,7 @@ export async function GET(request: NextRequest) {
     
     // Session is valid, return user data (excluding password)
     const { password, ...userWithoutPassword } = session.user;
+    console.log('GET /api/auth - Returning authenticated user:', userWithoutPassword.name);
     return NextResponse.json(userWithoutPassword);
     
   } catch (error) {
@@ -194,19 +144,14 @@ export async function DELETE(request: NextRequest) {
     const sessionToken = request.cookies.get('session-token')?.value;
     
     if (sessionToken) {
-      // If not Salem's special session, try to delete from database
-      if (!sessionToken.startsWith('salem-') && sessionToken !== 'salem-session') {
-        try {
-          // Delete session from database
-          await prisma.session.delete({
-            where: { id: sessionToken },
-          });
-        } catch (error) {
-          console.log('Session not found in database or deletion failed:', error);
-          // Continue with cookie deletion anyway
-        }
-      } else {
-        console.log('Logging out Salem Almannai (hardcoded user)');
+      try {
+        // Delete session from database
+        await prisma.session.delete({
+          where: { id: sessionToken },
+        });
+      } catch (error) {
+        console.log('Session not found in database or deletion failed:', error);
+        // Continue with cookie deletion anyway
       }
     }
     

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '@/components/dashboard/Layout';
 import { useDashboard } from '@/lib/DashboardProvider';
 import { ACTIONS } from '@/lib/DashboardProvider';
@@ -15,11 +15,11 @@ import {
   Lock, 
   Globe, 
   Mail, 
-  Upload,
+  Loader2,
   Check,
-  X,
-  Loader2
+  X
 } from 'lucide-react';
+import { generateAvatarUrl } from '@/lib/helpers';
 
 export default function SettingsPage() {
   const { state, dispatch } = useDashboard();
@@ -32,7 +32,6 @@ export default function SettingsPage() {
   const [profileForm, setProfileForm] = useState({
     name: '',
     email: '',
-    avatar: '',
     role: '',
   });
   
@@ -60,37 +59,6 @@ export default function SettingsPage() {
   // Error state
   const [error, setError] = useState('');
   
-  // Avatar upload
-  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
-  
-  // Define some default avatar options (using color placeholders until real avatars are added)
-  const avatarOptions = useMemo(() => {
-    // Generate personalized avatar URLs with the user's initials
-    const initials = profileForm.name
-      .split(' ')
-      .map(part => part.charAt(0))
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-      
-    const colorOptions = [
-      '0D8ABC', // Blue
-      '27AE60', // Green
-      'E74C3C', // Red
-      'F1C40F', // Yellow
-      '8E44AD', // Purple
-      'D35400', // Orange
-    ];
-    
-    // Create options with user's initials
-    const personalizedOptions = colorOptions.map(color => 
-      `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${color}&color=fff&size=256&bold=true`
-    );
-    
-    // Add default placeholder
-    return ['/avatar-placeholder.png', ...personalizedOptions];
-  }, [profileForm.name]);
-  
   // Fetch current user data when component loads
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -110,7 +78,6 @@ export default function SettingsPage() {
           setProfileForm({
             name: userData.name,
             email: userData.email,
-            avatar: userData.avatar || '',
             role: userData.role,
           });
         } else {
@@ -135,7 +102,6 @@ export default function SettingsPage() {
       setProfileForm({
         name: currentUser.name,
         email: currentUser.email,
-        avatar: currentUser.avatar || '',
         role: currentUser.role,
       });
     }
@@ -155,7 +121,6 @@ export default function SettingsPage() {
         const profileUpdate = {
           name: profileForm.name,
           email: profileForm.email,
-          avatar: profileForm.avatar,
         };
         
         console.log('Settings page: Submitting profile update:', profileUpdate);
@@ -230,20 +195,6 @@ export default function SettingsPage() {
     
     return () => clearTimeout(timer);
   };
-  
-  // Handle avatar selection
-  const handleAvatarSelect = (avatarUrl: string) => {
-    setProfileForm(prev => ({
-      ...prev,
-      avatar: avatarUrl
-    }));
-    setShowAvatarSelector(false);
-  };
-  
-  // Avatar upload dialog
-  const handleAvatarUpload = () => {
-    setShowAvatarSelector(true);
-  };
 
   return (
     <Layout>
@@ -315,72 +266,23 @@ export default function SettingsPage() {
                 <form onSubmit={handleProfileSubmit}>
                   <div className="space-y-4">
                     <div className="flex items-center space-x-4 mb-6">
-                      <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                        {profileForm.avatar && profileForm.avatar.startsWith('http') ? (
-                          <img 
-                            src={profileForm.avatar} 
-                            alt={profileForm.name} 
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex items-center justify-center h-full w-full bg-blue-500 text-white text-xl font-medium">
-                            {profileForm.name
-                              ? profileForm.name
-                                  .split(' ')
-                                  .map(part => part.charAt(0))
-                                  .slice(0, 2)
-                                  .join('')
-                                  .toUpperCase()
-                              : 'U'}
-                          </div>
-                        )}
+                      <div className="w-16 h-16 rounded-full bg-blue-500 overflow-hidden flex items-center justify-center text-white text-xl font-medium">
+                        {profileForm.name
+                          ? profileForm.name
+                              .split(' ')
+                              .map(part => part.charAt(0))
+                              .slice(0, 2)
+                              .join('')
+                              .toUpperCase()
+                          : 'U'}
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleAvatarUpload}
-                        className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center"
-                      >
-                        <Upload className="h-4 w-4 mr-2" />
-                        Change Avatar
-                      </button>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">Profile Picture</div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Your avatar is automatically generated based on your name.
+                        </p>
+                      </div>
                     </div>
-                    
-                    {/* Avatar selector dialog */}
-                    {showAvatarSelector && (
-                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-                          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Select Avatar</h3>
-                          <div className="grid grid-cols-3 gap-4 mb-4">
-                            {avatarOptions.map((avatar, index) => (
-                              <button
-                                key={index}
-                                type="button"
-                                onClick={() => handleAvatarSelect(avatar)}
-                                className="p-1 border-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                style={{
-                                  borderColor: profileForm.avatar === avatar ? 'rgb(59, 130, 246)' : 'transparent'
-                                }}
-                              >
-                                <img 
-                                  src={avatar} 
-                                  alt={`Avatar option ${index + 1}`}
-                                  className="w-full aspect-square object-cover rounded-md"
-                                />
-                              </button>
-                            ))}
-                          </div>
-                          <div className="flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() => setShowAvatarSelector(false)}
-                              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
