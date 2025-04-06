@@ -60,59 +60,36 @@ export default function Navbar() {
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
-  // Enhanced logout function with fallback mechanism
-  const handleLogout = async () => {
+  // Simplified direct logout function that bypasses the API
+  const handleLogout = () => {
     try {
       setIsLoggingOut(true);
-      console.log('Logout initiated...');
+      console.log('Performing direct logout...');
       
-      // Call the logout API with error handling and timeout
-      const logoutPromise = API.auth.logout();
-      
-      // Set a timeout to ensure we don't wait too long for the server
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Logout request timed out')), 3000)
-      );
-      
-      try {
-        // Race between the logout request and timeout
-        const result = await Promise.race([logoutPromise, timeoutPromise]) as { success: boolean };
-        console.log('Logout API response:', result);
-      } catch (apiError) {
-        // If the API call fails, we still want to force logout on the client side
-        console.error('Logout API error, proceeding with forced logout:', apiError);
-      }
-      
-      // Always clear local state regardless of API response
-      console.log('Clearing user state...');
+      // Clear dashboard state
       dispatch({
         type: ACTIONS.SET_CURRENT_USER,
         payload: null
       });
       
-      // Clear any stored session data manually
-      if (typeof window !== 'undefined') {
-        // Clear any auth-related localStorage items
-        localStorage.removeItem('user');
-        
-        // Clear cookies by setting them to expire
-        document.cookie.split(";").forEach(function(c) {
-          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-        });
-      }
+      // Force clear all cookies - most important part
+      document.cookie.split(";").forEach(function(c) {
+        const cookieName = c.trim().split("=")[0];
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+      });
       
-      // Force navigation to login page
-      console.log('Redirecting to login page...');
-      window.location.href = '/login';
+      console.log('Cookies cleared, redirecting to login page...');
+      
+      // Add a small delay to ensure state updates before redirect
+      setTimeout(() => {
+        // Use hard navigation to login page
+        window.location.href = '/login';
+      }, 100);
       
     } catch (error) {
-      console.error('Logout error:', error);
-      alert('An error occurred during logout. Please try again.');
-      
-      // If all else fails, try a simple redirect
+      console.error('Error during logout:', error);
+      // Last resort - direct redirect
       window.location.href = '/login';
-    } finally {
-      setIsLoggingOut(false);
     }
   };
 
