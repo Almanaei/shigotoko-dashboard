@@ -43,7 +43,7 @@ export default function LoginPage() {
     setError(null);
   };
 
-  // Simple login submission
+  // Improved login submission with direct fetch
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -54,15 +54,35 @@ export default function LoginPage() {
     
     try {
       setLoading(true);
-      const user = await API.auth.login(formData);
+      console.log('Attempting login with:', formData.email);
       
-      if (user) {
-        // Redirect to dashboard after successful login
-        window.location.href = '/';
+      // Direct fetch to API to ensure proper cookie handling
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+        credentials: 'include'  // Important for cookies
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Login failed');
       }
-    } catch (err) {
+      
+      const userData = await response.json();
+      console.log('Login successful, user data:', userData);
+      
+      // Set a small delay to ensure cookies are properly set
+      setTimeout(() => {
+        // Force a page reload to the dashboard
+        window.location.href = '/';
+      }, 100);
+      
+    } catch (err: any) {
       console.error('Login error:', err);
-      setError('Invalid email or password. Please try again.');
+      setError(err.message || 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
