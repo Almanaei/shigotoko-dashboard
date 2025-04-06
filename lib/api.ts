@@ -40,6 +40,14 @@ export const authAPI = {
     });
   },
   
+  // Register a new user
+  register: async (userData: { name: string; email: string; password: string; role?: string }) => {
+    return fetchAPI('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  },
+  
   // Logout user
   logout: async () => {
     return fetchAPI('/auth', {
