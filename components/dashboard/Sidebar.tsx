@@ -2,7 +2,7 @@
 
 import { Home, Users, Calendar, MessageSquare, FileText, Settings, LifeBuoy, LogOut, Building2, FolderKanban } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 
 interface NavItem {
@@ -12,9 +12,20 @@ interface NavItem {
   count?: number;
 }
 
-export default function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+interface SidebarProps {
+  collapsed?: boolean;
+}
+
+export default function Sidebar({ collapsed }: SidebarProps = {}) {
+  const [isCollapsed, setIsCollapsed] = useState(collapsed || false);
   const pathname = usePathname();
+  
+  // Update internal state when prop changes
+  useEffect(() => {
+    if (collapsed !== undefined) {
+      setIsCollapsed(collapsed);
+    }
+  }, [collapsed]);
   
   const navigation: NavItem[] = [
     { name: 'Dashboard', href: '/', icon: Home },

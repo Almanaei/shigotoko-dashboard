@@ -8,6 +8,10 @@ import { ThemeProvider } from '@/lib/ThemeProvider';
 import { DashboardProvider, useDashboard, initializeMockData } from '@/lib/DashboardProvider';
 import { Menu, X } from 'lucide-react';
 
+interface SidebarProps {
+  collapsed?: boolean;
+}
+
 function DashboardContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
