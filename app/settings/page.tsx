@@ -306,9 +306,14 @@ export default function SettingsPage() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <span className="flex items-center justify-center h-full text-gray-400 text-xl">
-                            {profileForm.name.charAt(0)}
-                          </span>
+                          <div className="flex items-center justify-center h-full w-full bg-blue-500 text-white text-xl font-medium">
+                            {profileForm.name
+                              .split(' ')
+                              .map(part => part.charAt(0))
+                              .slice(0, 2)
+                              .join('')
+                              .toUpperCase()}
+                          </div>
                         )}
                       </div>
                       <button

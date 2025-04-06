@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { cookies } from 'next/headers';
+import { generateAvatarUrl } from '@/lib/helpers';
 
 // Update user profile
 export async function PATCH(request: NextRequest) {
@@ -43,7 +44,20 @@ export async function PATCH(request: NextRequest) {
 
     // Prepare update data with only the fields that were provided
     const updateData: any = {};
-    if (name) updateData.name = name;
+    
+    // Handle name update
+    if (name) {
+      updateData.name = name;
+      
+      // If name is changed but avatar isn't explicitly provided,
+      // regenerate avatar based on the new name
+      if (!avatar && name !== session.user.name) {
+        updateData.avatar = generateAvatarUrl(name);
+        console.log('Regenerated avatar based on new name:', updateData.avatar);
+      }
+    }
+    
+    // Handle email update
     if (email) {
       // Check if email already exists for another user
       if (email !== session.user.email) {
@@ -60,7 +74,11 @@ export async function PATCH(request: NextRequest) {
       }
       updateData.email = email;
     }
-    if (avatar) updateData.avatar = avatar;
+    
+    // If avatar is explicitly provided, use it directly
+    if (avatar) {
+      updateData.avatar = avatar;
+    }
 
     // Update the user
     const updatedUser = await prisma.user.update({

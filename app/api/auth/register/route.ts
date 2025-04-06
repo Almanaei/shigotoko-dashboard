@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { generateAvatarUrl } from '@/lib/helpers';
 
 // Register a new user
 export async function POST(request: NextRequest) {
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
     // For demo purposes, we'll store it as plain text (NEVER DO THIS IN PRODUCTION)
     const hashedPassword = password;
 
+    // Generate avatar URL based on the user's name
+    const avatarUrl = generateAvatarUrl(name);
+
     // Create the user
     const user = await prisma.user.create({
       data: {
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest) {
         email,
         password: hashedPassword,
         role,
-        avatar: `/avatars/default-${Math.floor(Math.random() * 5) + 1}.jpg`, // Random default avatar
+        avatar: avatarUrl, // Use the generated avatar URL
       },
     });
     
