@@ -6,7 +6,19 @@ async function main() {
   try {
     console.log('Starting database seed...');
     
-    // Create users
+    // Create users - PUT SALEM ALMANNAI FIRST to ensure it gets priority
+    console.log('Creating Salem Almannai user - CRITICAL for proper authentication');
+    const almannaeiUser = await prisma.user.create({
+      data: {
+        name: 'Salem Almannai',
+        email: 'almannaei90@gmail.com', 
+        password: 'password123', // In a real app, this would be hashed
+        avatar: '/avatars/default-2.jpg',
+        role: 'Admin',
+        department: 'Engineering',
+      },
+    });
+    
     const alexUser = await prisma.user.create({
       data: {
         name: 'Alex Johnson',
@@ -30,7 +42,7 @@ async function main() {
     });
     
     // Add Almanaei user - this will allow user to login as "Almanaei" instead of being logged in as alex
-    const almanaeiUser = await prisma.user.create({
+    const almanaeiAltUser = await prisma.user.create({
       data: {
         name: 'Almanaei',
         email: 'almanaei@shigotoko.com',
@@ -40,20 +52,8 @@ async function main() {
         department: 'Engineering',
       },
     });
-    
-    // Add specific user with the exact email almannaei90@gmail.com
-    const almannaei90User = await prisma.user.create({
-      data: {
-        name: 'Salem Almannai',
-        email: 'almannaei90@gmail.com', 
-        password: 'password123', // In a real app, this would be hashed
-        avatar: '/avatars/default-2.jpg',
-        role: 'Admin',
-        department: 'Engineering',
-      },
-    });
 
-    console.log('Created users:', { alexUser, sarahUser, almanaeiUser, almannaei90User });
+    console.log('Created users:', { almannaeiUser, alexUser, sarahUser, almanaeiAltUser });
     
     // Create departments first
     const engineeringDept = await prisma.department.create({
