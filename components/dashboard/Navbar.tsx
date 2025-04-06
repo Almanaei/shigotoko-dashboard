@@ -60,34 +60,57 @@ export default function Navbar() {
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
-  // Enhanced logout function with better error handling and logging
+  // Enhanced logout function with fallback mechanism
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
       console.log('Logout initiated...');
       
-      // Call the logout API
-      const result = await API.auth.logout();
-      console.log('Logout API response:', result);
+      // Call the logout API with error handling and timeout
+      const logoutPromise = API.auth.logout();
       
-      if (result.success) {
-        console.log('Logout successful, clearing user state');
-        // Clear the current user from state
-        dispatch({
-          type: ACTIONS.SET_CURRENT_USER,
-          payload: null
-        });
-        
-        // Force navigation to login page
-        console.log('Redirecting to login page...');
-        window.location.href = '/login'; // Using direct navigation instead of router for a complete refresh
-      } else {
-        console.error('Logout returned success: false', result);
-        alert('Logout failed. Please try again.');
+      // Set a timeout to ensure we don't wait too long for the server
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Logout request timed out')), 3000)
+      );
+      
+      try {
+        // Race between the logout request and timeout
+        const result = await Promise.race([logoutPromise, timeoutPromise]) as { success: boolean };
+        console.log('Logout API response:', result);
+      } catch (apiError) {
+        // If the API call fails, we still want to force logout on the client side
+        console.error('Logout API error, proceeding with forced logout:', apiError);
       }
+      
+      // Always clear local state regardless of API response
+      console.log('Clearing user state...');
+      dispatch({
+        type: ACTIONS.SET_CURRENT_USER,
+        payload: null
+      });
+      
+      // Clear any stored session data manually
+      if (typeof window !== 'undefined') {
+        // Clear any auth-related localStorage items
+        localStorage.removeItem('user');
+        
+        // Clear cookies by setting them to expire
+        document.cookie.split(";").forEach(function(c) {
+          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+        });
+      }
+      
+      // Force navigation to login page
+      console.log('Redirecting to login page...');
+      window.location.href = '/login';
+      
     } catch (error) {
       console.error('Logout error:', error);
       alert('An error occurred during logout. Please try again.');
+      
+      // If all else fails, try a simple redirect
+      window.location.href = '/login';
     } finally {
       setIsLoggingOut(false);
     }
