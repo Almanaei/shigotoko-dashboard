@@ -6,54 +6,20 @@ async function main() {
   try {
     console.log('Starting database seed...');
     
-    // Create users - PUT SALEM ALMANNAI FIRST to ensure it gets priority
-    console.log('Creating Salem Almannai user - CRITICAL for proper authentication');
-    const almannaeiUser = await prisma.user.create({
+    // Create only one admin user
+    console.log('Creating Admin user');
+    const adminUser = await prisma.user.create({
       data: {
-        name: 'Salem Almannai',
-        email: 'almannaei90@gmail.com', 
+        name: 'Admin User',
+        email: 'admin@shigotoko.com', 
         password: 'password123', // In a real app, this would be hashed
-        avatar: '/avatars/default-2.jpg',
+        avatar: '/avatars/admin.jpg',
         role: 'Admin',
-        department: 'Engineering',
+        department: 'Management',
       },
     });
     
-    const alexUser = await prisma.user.create({
-      data: {
-        name: 'Alex Johnson',
-        email: 'alex@shigotoko.com',
-        password: 'password123', // In a real app, this would be hashed
-        avatar: '/avatars/alex.jpg',
-        role: 'Admin',
-        department: 'Engineering',
-      },
-    });
-
-    const sarahUser = await prisma.user.create({
-      data: {
-        name: 'Sarah Chen',
-        email: 'sarah@shigotoko.com',
-        password: 'password123', // In a real app, this would be hashed
-        avatar: '/avatars/sarah.jpg',
-        role: 'Manager',
-        department: 'Design',
-      },
-    });
-    
-    // Add Almanaei user - this will allow user to login as "Almanaei" instead of being logged in as alex
-    const almanaeiAltUser = await prisma.user.create({
-      data: {
-        name: 'Almanaei',
-        email: 'almanaei@shigotoko.com',
-        password: 'password123', // In a real app, this would be hashed
-        avatar: '/avatars/default-1.jpg',
-        role: 'Admin',
-        department: 'Engineering',
-      },
-    });
-
-    console.log('Created users:', { almannaeiUser, alexUser, sarahUser, almanaeiAltUser });
+    console.log('Created admin user:', adminUser);
     
     // Create departments first
     const engineeringDept = await prisma.department.create({
@@ -336,8 +302,8 @@ async function main() {
       data: [
         {
           content: 'Hey team, how is the website redesign coming along?',
-          senderId: alexUser.id,
-          senderName: 'Alex Johnson',
+          senderId: adminUser.id,
+          senderName: 'Admin User',
           timestamp: new Date('2023-03-15T09:30:00'),
         },
         {
@@ -347,8 +313,8 @@ async function main() {
         },
         {
           content: 'Great! Looking forward to seeing it.',
-          senderId: alexUser.id,
-          senderName: 'Alex Johnson',
+          senderId: adminUser.id,
+          senderName: 'Admin User',
           timestamp: new Date('2023-03-15T09:40:00'),
         },
         {
@@ -358,8 +324,8 @@ async function main() {
         },
         {
           content: 'Tomorrow at 2pm in the main conference room.',
-          senderId: alexUser.id,
-          senderName: 'Alex Johnson',
+          senderId: adminUser.id,
+          senderName: 'Admin User',
           timestamp: new Date('2023-03-16T10:20:00'),
         },
       ],
@@ -371,7 +337,7 @@ async function main() {
     await prisma.notification.createMany({
       data: [
         {
-          userId: alexUser.id,
+          userId: adminUser.id,
           title: 'New Project Assigned',
           message: 'You have been assigned to the Website Redesign project',
           type: 'assignment',
@@ -379,7 +345,7 @@ async function main() {
           createdAt: new Date('2023-01-10T10:00:00'),
         },
         {
-          userId: alexUser.id,
+          userId: adminUser.id,
           title: 'Meeting Reminder',
           message: 'Team meeting starts in 30 minutes',
           type: 'reminder',
@@ -387,7 +353,7 @@ async function main() {
           createdAt: new Date('2023-03-16T13:30:00'),
         },
         {
-          userId: sarahUser.id,
+          userId: adminUser.id,
           title: 'Task Completed',
           message: 'Design homepage mockup has been completed',
           type: 'update',
@@ -395,9 +361,9 @@ async function main() {
           createdAt: new Date('2023-02-15T15:45:00'),
         },
         {
-          userId: sarahUser.id,
+          userId: adminUser.id,
           title: 'New Message',
-          message: 'You have a new message from Alex Johnson',
+          message: 'You have a new message from Admin User',
           type: 'message',
           read: true,
           createdAt: new Date('2023-03-15T09:30:00'),
