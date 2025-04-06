@@ -258,30 +258,35 @@ async function main() {
           description: 'Create a mockup for the new homepage design',
           status: 'completed',
           projectId: projects[0].id,
+          priority: 'high'
         },
         {
           title: 'Implement responsive design',
           description: 'Make sure the website works on all devices',
           status: 'in-progress',
           projectId: projects[0].id,
+          priority: 'medium'
         },
         {
           title: 'Setup project repository',
           description: 'Initialize git repository and project structure',
           status: 'completed',
           projectId: projects[1].id,
+          priority: 'high'
         },
         {
           title: 'Define app requirements',
           description: 'Document all requirements for the mobile app',
           status: 'in-progress',
           projectId: projects[1].id,
+          priority: 'high'
         },
         {
           title: 'Create social media content',
           description: 'Design and schedule social media posts',
           status: 'completed',
           projectId: projects[2].id,
+          priority: 'medium'
         },
       ],
     });
@@ -293,32 +298,32 @@ async function main() {
       data: [
         {
           projectId: projects[0].id,
-          message: 'Project started',
-          type: 'info',
+          description: 'Project started',
+          action: 'info',
           timestamp: new Date('2023-01-10'),
         },
         {
           projectId: projects[0].id,
-          message: 'Design phase completed',
-          type: 'success',
+          description: 'Design phase completed',
+          action: 'success',
           timestamp: new Date('2023-02-15'),
         },
         {
           projectId: projects[1].id,
-          message: 'Project planning initiated',
-          type: 'info',
+          description: 'Project planning initiated',
+          action: 'info',
           timestamp: new Date('2023-03-01'),
         },
         {
           projectId: projects[2].id,
-          message: 'Campaign launched',
-          type: 'info',
+          description: 'Campaign launched',
+          action: 'info',
           timestamp: new Date('2023-02-01'),
         },
         {
           projectId: projects[2].id,
-          message: 'Campaign completed successfully',
-          type: 'success',
+          description: 'Campaign completed successfully',
+          action: 'success',
           timestamp: new Date('2023-04-15'),
         },
       ],
@@ -331,27 +336,30 @@ async function main() {
       data: [
         {
           content: 'Hey team, how is the website redesign coming along?',
-          sender: 'Alex Johnson',
+          senderId: alexUser.id,
+          senderName: 'Alex Johnson',
           timestamp: new Date('2023-03-15T09:30:00'),
         },
         {
           content: 'We\'re making good progress. Homepage is almost done!',
-          sender: 'John Smith',
+          senderName: 'John Smith',
           timestamp: new Date('2023-03-15T09:35:00'),
         },
         {
           content: 'Great! Looking forward to seeing it.',
-          sender: 'Alex Johnson',
+          senderId: alexUser.id,
+          senderName: 'Alex Johnson',
           timestamp: new Date('2023-03-15T09:40:00'),
         },
         {
           content: 'When is our next team meeting?',
-          sender: 'Emily Wang',
+          senderName: 'Emily Wang',
           timestamp: new Date('2023-03-16T10:15:00'),
         },
         {
           content: 'Tomorrow at 2pm in the main conference room.',
-          sender: 'Alex Johnson',
+          senderId: alexUser.id,
+          senderName: 'Alex Johnson',
           timestamp: new Date('2023-03-16T10:20:00'),
         },
       ],
@@ -365,34 +373,34 @@ async function main() {
         {
           userId: alexUser.id,
           title: 'New Project Assigned',
-          content: 'You have been assigned to the Website Redesign project',
+          message: 'You have been assigned to the Website Redesign project',
           type: 'assignment',
           read: true,
-          timestamp: new Date('2023-01-10T10:00:00'),
+          createdAt: new Date('2023-01-10T10:00:00'),
         },
         {
           userId: alexUser.id,
           title: 'Meeting Reminder',
-          content: 'Team meeting starts in 30 minutes',
+          message: 'Team meeting starts in 30 minutes',
           type: 'reminder',
           read: false,
-          timestamp: new Date('2023-03-16T13:30:00'),
+          createdAt: new Date('2023-03-16T13:30:00'),
         },
         {
           userId: sarahUser.id,
           title: 'Task Completed',
-          content: 'Design homepage mockup has been completed',
+          message: 'Design homepage mockup has been completed',
           type: 'update',
           read: false,
-          timestamp: new Date('2023-02-15T15:45:00'),
+          createdAt: new Date('2023-02-15T15:45:00'),
         },
         {
           userId: sarahUser.id,
           title: 'New Message',
-          content: 'You have a new message from Alex Johnson',
+          message: 'You have a new message from Alex Johnson',
           type: 'message',
           read: true,
-          timestamp: new Date('2023-03-15T09:30:00'),
+          createdAt: new Date('2023-03-15T09:30:00'),
         },
       ],
     });
