@@ -341,10 +341,24 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             } else {
               console.log('DashboardProvider: No session-token cookie found');
             }
+            
+            // Only set mock user if no real user was found
+            const mockUser: User = {
+              id: 'user-1',
+              name: 'Admin User',
+              email: 'admin@shigotoko.com',
+              avatar: '/avatars/admin.jpg',
+              role: 'Admin'
+            };
+            
+            dispatch({
+              type: ACTIONS.SET_CURRENT_USER,
+              payload: mockUser
+            });
           }
           
-          console.log('DashboardProvider: Initializing mock data');
-          // Initialize mock data to populate the dashboard
+          console.log('DashboardProvider: Initializing mock data for dashboard components');
+          // Initialize mock data for dashboard components (but not user)
           initializeMockData(dispatch);
           
           dispatch({ type: ACTIONS.SET_LOADING, payload: false });
@@ -481,6 +495,12 @@ function generateMockNotifications(): Notification[] {
 
 // Generate mock messages
 function generateMockMessages(): Message[] {
+  // Define admin user reference for messages
+  const adminUser = {
+    id: 'user-1',
+    name: 'Admin User'
+  };
+
   return [
     {
       id: 'msg-1',
@@ -492,8 +512,8 @@ function generateMockMessages(): Message[] {
     {
       id: 'msg-2',
       content: 'Thanks! I need some help with the onboarding process.',
-      sender: mockUser.id,
-      senderName: mockUser.name,
+      sender: adminUser.id,
+      senderName: adminUser.name,
       timestamp: new Date(Date.now() - 3000000).toISOString() // 50 minutes ago
     },
     {
@@ -515,7 +535,7 @@ function generateMockMessages(): Message[] {
 
 // Mock data initialization
 export function initializeMockData(dispatch: DashboardDispatch) {
-  // Current user mock data - only use if no real user is logged in
+  // Define the mock user for reference in this function
   const mockUser: User = {
     id: 'user-1',
     name: 'Admin User',
@@ -878,7 +898,7 @@ export function initializeMockData(dispatch: DashboardDispatch) {
     }
   ];
 
-  dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: mockUser });
+  // Set mock data in state, but don't overwrite current user if it exists
   dispatch({ type: ACTIONS.SET_DEPARTMENTS, payload: mockDepartments });
   dispatch({ type: ACTIONS.SET_EMPLOYEES, payload: mockEmployees });
   dispatch({ type: ACTIONS.SET_PROJECTS, payload: mockProjects });
