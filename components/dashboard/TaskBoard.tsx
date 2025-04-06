@@ -1,9 +1,8 @@
 "use client";
 
 import { Search, Filter, LayoutGrid, List, Calendar as CalendarIcon, Clock, MoreVertical, Plus } from 'lucide-react';
-import { useDashboard } from '@/lib/DashboardProvider';
+import { useDashboard, ACTIONS, Task } from '@/lib/DashboardProvider';
 import { useState, useRef } from 'react';
-import { Task } from '@/lib/DashboardProvider';
 
 interface TaskColumnProps {
   title: string;
@@ -137,8 +136,8 @@ export default function TaskBoard() {
   // Handle task drop to change status
   const handleTaskDrop = (taskId: string, newStatus: Task['status']) => {
     dispatch({
-      type: 'UPDATE_TASK',
-      payload: { id: taskId, data: { status: newStatus } }
+      type: ACTIONS.UPDATE_TASK,
+      payload: { id: taskId, task: { status: newStatus } }
     });
   };
 
@@ -154,7 +153,7 @@ export default function TaskBoard() {
     };
     
     dispatch({
-      type: 'ADD_TASK',
+      type: ACTIONS.ADD_TASK,
       payload: newTask
     });
   };
