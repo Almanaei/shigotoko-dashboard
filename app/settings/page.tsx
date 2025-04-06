@@ -58,7 +58,7 @@ export default function SettingsPage() {
       setProfileForm({
         name: currentUser.name,
         email: currentUser.email,
-        avatar: currentUser.avatar,
+        avatar: currentUser.avatar || '',
         role: currentUser.role,
       });
     }
@@ -75,7 +75,7 @@ export default function SettingsPage() {
           ...currentUser,
           name: profileForm.name,
           email: profileForm.email,
-          avatar: profileForm.avatar,
+          avatar: profileForm.avatar as string,
           role: profileForm.role,
         }
       });
