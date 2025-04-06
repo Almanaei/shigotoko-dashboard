@@ -14,6 +14,7 @@ export default function RegisterPage() {
     email: '',
     password: '',
     confirmPassword: '',
+    role: 'Admin',
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -71,11 +72,12 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       
-      // Register the user
+      // Register the user with Admin role
       const userData = {
         name: formData.name,
         email: formData.email,
-        password: formData.password
+        password: formData.password,
+        role: formData.role  // Include the admin role
       };
       
       const user = await API.auth.register(userData);
