@@ -164,6 +164,10 @@ export default function LoginPage() {
             <p className="text-sm font-medium text-gray-900 dark:text-gray-200 mb-2">Test Accounts:</p>
             <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
               <div className="flex justify-between">
+                <span>Salem Almannai (Admin):</span>
+                <span className="font-mono">almannaei90@gmail.com / password123</span>
+              </div>
+              <div className="flex justify-between">
                 <span>Almanaei (Admin):</span>
                 <span className="font-mono">almanaei@shigotoko.com / password123</span>
               </div>

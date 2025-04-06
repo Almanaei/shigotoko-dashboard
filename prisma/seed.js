@@ -40,8 +40,20 @@ async function main() {
         department: 'Engineering',
       },
     });
+    
+    // Add specific user with the exact email almannaei90@gmail.com
+    const almannaei90User = await prisma.user.create({
+      data: {
+        name: 'Salem Almannai',
+        email: 'almannaei90@gmail.com', 
+        password: 'password123', // In a real app, this would be hashed
+        avatar: '/avatars/default-2.jpg',
+        role: 'Admin',
+        department: 'Engineering',
+      },
+    });
 
-    console.log('Created users:', { alexUser, sarahUser, almanaeiUser });
+    console.log('Created users:', { alexUser, sarahUser, almanaeiUser, almannaei90User });
     
     // Create departments first
     const engineeringDept = await prisma.department.create({
