@@ -1,16 +1,25 @@
 import { Badge } from "../ui/Badge";
 import { Avatar } from "../ui/Avatar";
 import { Clock, ChevronDown, MoreVertical, Filter } from 'lucide-react';
-import { useDashboard } from '@/lib/DashboardProvider';
+import { useDashboard, Employee } from '@/lib/DashboardProvider';
 import { useState } from 'react';
 
 type ViewMode = 'day' | 'week' | 'month';
 
+// Extended employee interface with attendance data
+interface AttendanceEmployee extends Employee {
+  role?: string;
+  checkIn?: string;
+  checkOut?: string;
+  scheduleIn?: string;
+  scheduleOut?: string;
+}
+
 export default function AttendanceTable() {
   const { state } = useDashboard();
-  const { employees } = state;
+  const employees = state.employees as AttendanceEmployee[];
   const [viewMode, setViewMode] = useState<ViewMode>('week');
-  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [selectedRows, setSelectedRows] = useState<string[]>([]);
 
   const toggleSelectAll = () => {
     if (selectedRows.length === employees.length) {
@@ -20,7 +29,7 @@ export default function AttendanceTable() {
     }
   };
 
-  const toggleSelectRow = (id: number) => {
+  const toggleSelectRow = (id: string) => {
     if (selectedRows.includes(id)) {
       setSelectedRows(selectedRows.filter(rowId => rowId !== id));
     } else {
@@ -146,14 +155,14 @@ export default function AttendanceTable() {
                       />
                       <div>
                         <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{employee.name}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{employee.role}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{employee.role || employee.position}</div>
                       </div>
                     </div>
                   </div>
                 </td>
                 <td className="p-4 whitespace-nowrap">
                   <Badge 
-                    variant={employee.status === "Full-time" ? "blue" : "gray"}
+                    variant={employee.status === "active" ? "blue" : "gray"}
                   >
                     {employee.status}
                   </Badge>
@@ -161,25 +170,25 @@ export default function AttendanceTable() {
                 <td className="p-4 whitespace-nowrap">
                   <div className="flex items-center text-sm text-gray-700 dark:text-gray-300">
                     <Clock className="h-4 w-4 text-gray-400 dark:text-gray-500 mr-1.5" />
-                    {employee.checkIn}
+                    {employee.checkIn || '9:00 AM'}
                   </div>
                 </td>
                 <td className="p-4 whitespace-nowrap">
                   <div className="flex items-center text-sm text-gray-700 dark:text-gray-300">
                     <Clock className="h-4 w-4 text-gray-400 dark:text-gray-500 mr-1.5" />
-                    {employee.checkOut}
+                    {employee.checkOut || '5:00 PM'}
                   </div>
                 </td>
                 <td className="p-4 whitespace-nowrap">
                   <div className="flex items-center text-sm text-gray-700 dark:text-gray-300">
                     <Clock className="h-4 w-4 text-gray-400 dark:text-gray-500 mr-1.5" />
-                    {employee.scheduleIn}
+                    {employee.scheduleIn || '8:30 AM'}
                   </div>
                 </td>
                 <td className="p-4 whitespace-nowrap">
                   <div className="flex items-center text-sm text-gray-700 dark:text-gray-300">
                     <Clock className="h-4 w-4 text-gray-400 dark:text-gray-500 mr-1.5" />
-                    {employee.scheduleOut}
+                    {employee.scheduleOut || '5:30 PM'}
                   </div>
                 </td>
               </tr>
