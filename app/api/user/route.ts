@@ -30,14 +30,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get the profile update data from the request
-    const { name, email } = await request.json();
+    const { name, email, avatar } = await request.json();
     
-    console.log('Profile update request for user:', session.user.id, { name, email });
+    console.log('Profile update request for user:', session.user.id, { name, email, avatar });
 
     // Validate input - at least one field should be provided
-    if (!name && !email) {
+    if (!name && !email && !avatar) {
       return NextResponse.json(
-        { error: 'At least one field (name or email) is required' },
+        { error: 'At least one field (name, email, or avatar) is required' },
         { status: 400 }
       );
     }
@@ -49,9 +49,17 @@ export async function PATCH(request: NextRequest) {
     if (name) {
       updateData.name = name;
       
-      // Always regenerate avatar based on the new name
-      updateData.avatar = generateAvatarUrl(name);
-      console.log('Generated avatar based on name:', updateData.avatar);
+      // If no custom avatar is provided, generate one from the name
+      if (!avatar) {
+        updateData.avatar = generateAvatarUrl(name);
+        console.log('Generated avatar based on name:', updateData.avatar);
+      }
+    }
+    
+    // Handle avatar update if provided
+    if (avatar) {
+      updateData.avatar = avatar;
+      console.log('Using custom avatar:', avatar);
     }
     
     // Handle email update

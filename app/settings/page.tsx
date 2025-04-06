@@ -17,7 +17,8 @@ import {
   Mail, 
   Loader2,
   Check,
-  X
+  X,
+  Upload
 } from 'lucide-react';
 import { generateAvatarUrl } from '@/lib/helpers';
 
@@ -33,7 +34,22 @@ export default function SettingsPage() {
     name: '',
     email: '',
     role: '',
+    avatar: '',
   });
+  
+  // Avatar upload state
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
+  
+  // Define avatar options
+  const avatarOptions = [
+    '/avatar-placeholder.png',
+    'https://ui-avatars.com/api/?name=RW&background=E91E63&color=fff&size=256&bold=true',
+    'https://ui-avatars.com/api/?name=AL&background=0D8ABC&color=fff&size=256&bold=true',
+    'https://ui-avatars.com/api/?name=SA&background=27AE60&color=fff&size=256&bold=true',
+    'https://ui-avatars.com/api/?name=PD&background=F1C40F&color=fff&size=256&bold=true',
+    'https://ui-avatars.com/api/?name=TG&background=8E44AD&color=fff&size=256&bold=true',
+    'https://ui-avatars.com/api/?name=JM&background=D35400&color=fff&size=256&bold=true'
+  ];
   
   // Appearance settings state
   const [darkMode, setDarkMode] = useState(() => {
@@ -79,6 +95,7 @@ export default function SettingsPage() {
             name: userData.name,
             email: userData.email,
             role: userData.role,
+            avatar: userData.avatar || '',
           });
         } else {
           console.log('Settings page: No user data returned from API');
@@ -103,6 +120,7 @@ export default function SettingsPage() {
         name: currentUser.name,
         email: currentUser.email,
         role: currentUser.role,
+        avatar: currentUser.avatar || '',
       });
     }
   }, [currentUser, isLoading]);
@@ -121,6 +139,7 @@ export default function SettingsPage() {
         const profileUpdate = {
           name: profileForm.name,
           email: profileForm.email,
+          avatar: profileForm.avatar,
         };
         
         console.log('Settings page: Submitting profile update:', profileUpdate);
@@ -196,6 +215,20 @@ export default function SettingsPage() {
     return () => clearTimeout(timer);
   };
 
+  // Handle avatar selection
+  const handleAvatarSelect = (avatarUrl: string) => {
+    setProfileForm(prev => ({
+      ...prev,
+      avatar: avatarUrl
+    }));
+    setShowAvatarSelector(false);
+  };
+  
+  // Avatar upload dialog
+  const handleAvatarUpload = () => {
+    setShowAvatarSelector(true);
+  };
+
   return (
     <Layout>
       <div className="p-6 max-w-5xl mx-auto">
@@ -266,21 +299,52 @@ export default function SettingsPage() {
                 <form onSubmit={handleProfileSubmit}>
                   <div className="space-y-4">
                     <div className="flex items-center space-x-4 mb-6">
-                      <div className="w-16 h-16 rounded-full bg-blue-500 overflow-hidden flex items-center justify-center text-white text-xl font-medium">
-                        {profileForm.name
-                          ? profileForm.name
-                              .split(' ')
-                              .map(part => part.charAt(0))
-                              .slice(0, 2)
-                              .join('')
-                              .toUpperCase()
-                          : 'U'}
+                      <div className="w-16 h-16 rounded-full overflow-hidden">
+                        {profileForm.avatar && profileForm.avatar.startsWith('http') ? (
+                          <img 
+                            src={profileForm.avatar} 
+                            alt={profileForm.name} 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          /* Display exactly two letters from name */
+                          <div className="flex items-center justify-center h-full w-full bg-blue-500 text-white text-xl font-medium">
+                            {(() => {
+                              const nameParts = profileForm.name.split(' ');
+                              let initials = '';
+                              
+                              if (nameParts.length >= 2) {
+                                // First letter of first and last name
+                                initials = nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0);
+                              } else if (profileForm.name.length >= 2) {
+                                // First two letters of name
+                                initials = profileForm.name.substring(0, 2);
+                              } else if (profileForm.name.length === 1) {
+                                // Single letter plus "U"
+                                initials = profileForm.name.charAt(0) + 'U';
+                              } else {
+                                // Default
+                                initials = 'US';
+                              }
+                              
+                              return initials.toUpperCase();
+                            })()}
+                          </div>
+                        )}
                       </div>
-                      <div>
+                      <div className="flex flex-col">
                         <div className="text-sm font-medium text-gray-900 dark:text-white mb-1">Profile Picture</div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Your avatar is automatically generated based on your name.
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                          Your avatar shows your two-letter initials or a custom image.
                         </p>
+                        <button
+                          type="button"
+                          onClick={handleAvatarUpload}
+                          className="px-3 py-1 border border-gray-300 dark:border-gray-700 rounded-md text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center w-fit"
+                        >
+                          <Upload className="h-3 w-3 mr-1" />
+                          Change Avatar
+                        </button>
                       </div>
                     </div>
                     
