@@ -4,6 +4,7 @@ import { Home, Users, Calendar, MessageSquare, FileText, Settings, LifeBuoy, Log
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { API } from '@/lib/api';
 
 interface NavItem {
   name: string;
@@ -18,6 +19,7 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed }: SidebarProps = {}) {
   const [isCollapsed, setIsCollapsed] = useState(collapsed || false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const pathname = usePathname();
   
   // Update internal state when prop changes
@@ -26,6 +28,20 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
       setIsCollapsed(collapsed);
     }
   }, [collapsed]);
+
+  // Handle logout
+  const handleLogout = () => {
+    // Show loading state
+    setIsLoggingOut(true);
+    
+    // Clear any cookies to remove session
+    document.cookie.split(";").forEach(c => {
+      document.cookie = c.trim().split("=")[0] + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    });
+    
+    // Redirect to login page
+    window.location.href = '/login';
+  };
   
   const navigation: NavItem[] = [
     { name: 'Dashboard', href: '/', icon: Home },
@@ -131,17 +147,26 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
       </div>
       
       <div className="p-4 border-t border-gray-100 dark:border-dark-border">
-        <button className="w-full flex items-center px-2 py-2 text-sm font-medium rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300">
-          <LogOut
-            className={`
-              text-red-500 dark:text-red-400
-              ${isCollapsed ? 'mx-auto' : 'mr-3'}
-              h-5 w-5 flex-shrink-0
-            `}
-            aria-hidden="true"
-          />
-          {!isCollapsed && (
-            <span className="flex-1">Log out</span>
+        <button 
+          onClick={handleLogout}
+          className="w-full flex items-center px-2 py-2 text-sm font-medium rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+        >
+          {isLoggingOut ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-red-300 border-t-red-600 dark:border-red-700 dark:border-t-red-400 mx-auto"></div>
+          ) : (
+            <>
+              <LogOut
+                className={`
+                  text-red-500 dark:text-red-400
+                  ${isCollapsed ? 'mx-auto' : 'mr-3'}
+                  h-5 w-5 flex-shrink-0
+                `}
+                aria-hidden="true"
+              />
+              {!isCollapsed && (
+                <span className="flex-1">Log out</span>
+              )}
+            </>
           )}
         </button>
       </div>

@@ -209,10 +209,7 @@ export default function Navbar() {
         </button>
         
         <button 
-          onClick={() => {
-            handleLogout();
-            return false; // Prevent default
-          }}
+          onClick={handleLogout}
           disabled={isLoggingOut}
           className={`relative p-2 transition-colors duration-200 rounded-md ${
             isLoggingOut 
