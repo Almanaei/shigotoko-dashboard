@@ -61,20 +61,35 @@ export default function Navbar() {
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
   // Simple direct logout function
-  const handleLogout = () => {
+  const handleLogout = async () => {
     // Show loading state
     setIsLoggingOut(true);
     
-    // Clear any login flags
-    localStorage.removeItem('justLoggedIn');
-    
-    // Clear cookies to remove session
-    document.cookie.split(";").forEach(c => {
-      document.cookie = c.trim().split("=")[0] + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    });
-    
-    // Redirect to login page
-    window.location.href = '/login';
+    try {
+      // Use the API to properly logout - this will handle the server-side session deletion
+      console.log('Logging out via API...');
+      await API.auth.logout();
+      
+      // Additionally clear cookies on the client side
+      console.log('Clearing cookies...');
+      // Handle both cookie formats (with hyphen and underscore)
+      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      
+      // Clear any local storage items
+      localStorage.removeItem('justLoggedIn');
+      
+      console.log('Redirecting to login page...');
+      // Force a complete page refresh when redirecting
+      window.location.replace('/login');
+    } catch (error) {
+      console.error('Error during logout:', error);
+      
+      // If API call fails, still attempt to clear cookies and redirect
+      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      window.location.replace('/login');
+    }
   };
 
   // Inside the user menu dropdown, add a role update option if current user has Admin capability

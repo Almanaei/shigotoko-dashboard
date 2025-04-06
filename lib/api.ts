@@ -21,6 +21,7 @@ async function fetchAPI<T>(
       ...defaultHeaders,
       ...options.headers,
     },
+    credentials: 'include', // Always include credentials for cookie authentication
   });
   
   if (!response.ok) {

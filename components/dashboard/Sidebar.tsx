@@ -30,17 +30,32 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
   }, [collapsed]);
 
   // Handle logout
-  const handleLogout = () => {
+  const handleLogout = async () => {
     // Show loading state
     setIsLoggingOut(true);
     
-    // Clear any cookies to remove session
-    document.cookie.split(";").forEach(c => {
-      document.cookie = c.trim().split("=")[0] + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    });
-    
-    // Redirect to login page
-    window.location.href = '/login';
+    try {
+      // Use the API to properly logout - this will handle the server-side session deletion
+      console.log('Logging out via API from sidebar...');
+      await API.auth.logout();
+      
+      // Additionally clear cookies on the client side
+      console.log('Clearing cookies...');
+      // Handle both cookie formats (with hyphen and underscore)
+      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      
+      console.log('Redirecting to login page...');
+      // Force a complete page refresh when redirecting
+      window.location.replace('/login');
+    } catch (error) {
+      console.error('Error during logout:', error);
+      
+      // If API call fails, still attempt to clear cookies and redirect
+      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      window.location.replace('/login');
+    }
   };
   
   const navigation: NavItem[] = [

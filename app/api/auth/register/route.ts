@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     
     // Set the session cookie
     response.cookies.set({
-      name: 'session_token',
+      name: 'session-token',
       value: sessionToken,
       httpOnly: true,
       path: '/',
