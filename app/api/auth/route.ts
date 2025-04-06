@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import { cookies } from 'next/headers';
 import { v4 as uuidv4 } from 'uuid';
 
 // Login route
@@ -55,8 +54,12 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Set cookie
-    cookies().set({
+    // Create a response with user data
+    const { password: _, ...userWithoutPassword } = user;
+    const response = NextResponse.json(userWithoutPassword);
+    
+    // Set the cookie in the response
+    response.cookies.set({
       name: 'session_token',
       value: sessionToken,
       httpOnly: true,
@@ -65,11 +68,8 @@ export async function POST(request: NextRequest) {
       maxAge: 30 * 24 * 60 * 60, // 30 days
       sameSite: 'strict',
     });
-
-    // Return user data (excluding password)
-    const { password: _, ...userWithoutPassword } = user;
     
-    return NextResponse.json(userWithoutPassword);
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(
@@ -80,9 +80,9 @@ export async function POST(request: NextRequest) {
 }
 
 // Logout route
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
-    const sessionToken = cookies().get('session_token')?.value;
+    const sessionToken = request.cookies.get('session_token')?.value;
     
     if (sessionToken) {
       // Delete session from database
@@ -93,10 +93,11 @@ export async function DELETE() {
       });
     }
     
-    // Clear cookie
-    cookies().delete('session_token');
+    // Create a response and clear the cookie
+    const response = NextResponse.json({ success: true });
+    response.cookies.delete('session_token');
     
-    return NextResponse.json({ success: true });
+    return response;
   } catch (error) {
     console.error('Logout error:', error);
     return NextResponse.json(
@@ -107,9 +108,9 @@ export async function DELETE() {
 }
 
 // Get current session user
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const sessionToken = cookies().get('session_token')?.value;
+    const sessionToken = request.cookies.get('session_token')?.value;
     
     if (!sessionToken) {
       return NextResponse.json(null);
@@ -123,8 +124,9 @@ export async function GET() {
     
     // Check if session exists and is valid
     if (!session || session.expires < new Date()) {
-      cookies().delete('session_token');
-      return NextResponse.json(null);
+      const response = NextResponse.json(null);
+      response.cookies.delete('session_token');
+      return response;
     }
     
     // Return user data
