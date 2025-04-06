@@ -17,7 +17,8 @@ import {
   Mail, 
   Upload,
   Check,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -56,10 +57,15 @@ export default function SettingsPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   
+  // Error state
+  const [error, setError] = useState('');
+  
   // Fetch current user data when component loads
   useEffect(() => {
     const fetchCurrentUser = async () => {
       setIsLoading(true);
+      setError('');
+      
       try {
         const userData = await API.auth.getCurrentUser();
         if (userData) {
@@ -78,9 +84,11 @@ export default function SettingsPage() {
           });
         } else {
           console.log('Settings page: No user data returned from API');
+          setError('Could not retrieve user data. Please try again.');
         }
       } catch (error) {
         console.error('Settings page: Error fetching user data:', error);
+        setError('Error loading profile. Please check your connection and try again.');
       } finally {
         setIsLoading(false);
       }
@@ -107,19 +115,25 @@ export default function SettingsPage() {
     e.preventDefault();
     
     if (currentUser) {
-      // In a real app, this would call an API to update the user
-      dispatch({
-        type: ACTIONS.SET_CURRENT_USER,
-        payload: {
-          ...currentUser,
-          name: profileForm.name,
-          email: profileForm.email,
-          avatar: profileForm.avatar as string,
-          role: profileForm.role,
-        }
-      });
-      
-      showSuccessNotification('Profile updated successfully');
+      try {
+        // In a real app, this would call an API to update the user
+        // For now, we just update the state
+        dispatch({
+          type: ACTIONS.SET_CURRENT_USER,
+          payload: {
+            ...currentUser,
+            name: profileForm.name,
+            email: profileForm.email,
+            avatar: profileForm.avatar as string,
+            role: profileForm.role,
+          }
+        });
+        
+        showSuccessNotification('Profile updated successfully');
+      } catch (error) {
+        console.error('Error updating profile:', error);
+        setError('Failed to update profile. Please try again.');
+      }
     }
   };
   
@@ -191,7 +205,7 @@ export default function SettingsPage() {
         
         {/* Success notification */}
         {showSuccess && (
-          <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded flex items-center shadow-lg animate-slide-in-right">
+          <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded flex items-center shadow-lg animate-slide-in-right z-50">
             <Check className="h-5 w-5 mr-2" />
             <span>{successMessage}</span>
             <button 
@@ -203,291 +217,313 @@ export default function SettingsPage() {
           </div>
         )}
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left sidebar with nav */}
-          <div className="col-span-1">
-            <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark">
-              <nav className="space-y-1 p-3">
-                <a href="#profile" className="flex items-center px-3 py-2 text-sm font-medium rounded-md bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
-                  <User className="mr-3 h-5 w-5" />
-                  <span>Profile Settings</span>
-                </a>
-                <a href="#appearance" className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-300">
-                  <Moon className="mr-3 h-5 w-5" />
-                  <span>Appearance</span>
-                </a>
-                <a href="#notifications" className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-300">
-                  <Bell className="mr-3 h-5 w-5" />
-                  <span>Notifications</span>
-                </a>
-              </nav>
+        {/* Error notification */}
+        {error && (
+          <div className="mb-6 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center text-red-600 dark:text-red-400">
+            <X className="h-5 w-5 mr-2 flex-shrink-0" />
+            <span className="text-sm">{error}</span>
+            <button
+              className="ml-auto text-red-600 dark:text-red-400"
+              onClick={() => setError('')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+        
+        {/* Loading state */}
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center p-12">
+            <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
+            <p className="text-gray-600 dark:text-gray-400">Loading your profile settings...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Left sidebar with nav */}
+            <div className="col-span-1">
+              <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark">
+                <nav className="space-y-1 p-3">
+                  <a href="#profile" className="flex items-center px-3 py-2 text-sm font-medium rounded-md bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                    <User className="mr-3 h-5 w-5" />
+                    <span>Profile Settings</span>
+                  </a>
+                  <a href="#appearance" className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-300">
+                    <Moon className="mr-3 h-5 w-5" />
+                    <span>Appearance</span>
+                  </a>
+                  <a href="#notifications" className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-300">
+                    <Bell className="mr-3 h-5 w-5" />
+                    <span>Notifications</span>
+                  </a>
+                </nav>
+              </div>
+            </div>
+            
+            {/* Main content area */}
+            <div className="col-span-1 md:col-span-2 space-y-6">
+              {/* Profile settings */}
+              <section id="profile" className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark p-6 animate-slide-in">
+                <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Profile Settings</h2>
+                
+                <form onSubmit={handleProfileSubmit}>
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-4 mb-6">
+                      <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                        {profileForm.avatar ? (
+                          <img 
+                            src={profileForm.avatar} 
+                            alt={profileForm.name} 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex items-center justify-center h-full text-gray-400 text-xl">
+                            {profileForm.name.charAt(0)}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAvatarUpload}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Photo
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Name
+                        </label>
+                        <input
+                          type="text"
+                          name="name"
+                          value={profileForm.name}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Email Address
+                        </label>
+                        <input
+                          type="email"
+                          name="email"
+                          value={profileForm.email}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Role
+                        </label>
+                        <input
+                          type="text"
+                          name="role"
+                          value={profileForm.role}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
+                          readOnly
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm dark:bg-blue-700 dark:hover:bg-blue-800"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Profile
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </section>
+              
+              {/* Appearance Settings */}
+              <section id="appearance" className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark p-6 animate-slide-in">
+                <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Appearance</h2>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      {darkMode ? (
+                        <Moon className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
+                      ) : (
+                        <Sun className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
+                      )}
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {darkMode ? 'Dark Mode' : 'Light Mode'}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {darkMode 
+                            ? 'Switch to light mode for a brighter appearance' 
+                            : 'Switch to dark mode to reduce eye strain in low-light environments'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={handleAppearanceChange}
+                      className={`
+                        relative inline-flex items-center h-6 rounded-full w-11 
+                        ${darkMode ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+                        transition-colors ease-in-out duration-200
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
+                          ${darkMode ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </section>
+              
+              {/* Notification Settings */}
+              <section id="notifications" className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark p-6 animate-slide-in">
+                <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Notification Preferences</h2>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center">
+                      <Mail className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Email Notifications
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleNotificationSettingChange('emailNotifications')}
+                      className={`
+                        relative inline-flex items-center h-6 rounded-full w-11 
+                        ${notificationSettings.emailNotifications ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+                        transition-colors ease-in-out duration-200
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
+                          ${notificationSettings.emailNotifications ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center">
+                      <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Push Notifications
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleNotificationSettingChange('pushNotifications')}
+                      className={`
+                        relative inline-flex items-center h-6 rounded-full w-11 
+                        ${notificationSettings.pushNotifications ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+                        transition-colors ease-in-out duration-200
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
+                          ${notificationSettings.pushNotifications ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center">
+                      <Mail className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Weekly Digest
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleNotificationSettingChange('weeklyDigest')}
+                      className={`
+                        relative inline-flex items-center h-6 rounded-full w-11 
+                        ${notificationSettings.weeklyDigest ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+                        transition-colors ease-in-out duration-200
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
+                          ${notificationSettings.weeklyDigest ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center">
+                      <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Mention Alerts
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleNotificationSettingChange('mentionAlerts')}
+                      className={`
+                        relative inline-flex items-center h-6 rounded-full w-11 
+                        ${notificationSettings.mentionAlerts ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+                        transition-colors ease-in-out duration-200
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
+                          ${notificationSettings.mentionAlerts ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center">
+                      <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Task Reminders
+                      </span>
+                    </div>
+                    
+                    <button
+                      onClick={() => handleNotificationSettingChange('taskReminders')}
+                      className={`
+                        relative inline-flex items-center h-6 rounded-full w-11 
+                        ${notificationSettings.taskReminders ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+                        transition-colors ease-in-out duration-200
+                      `}
+                    >
+                      <span
+                        className={`
+                          inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
+                          ${notificationSettings.taskReminders ? 'translate-x-6' : 'translate-x-1'}
+                        `}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
-          
-          {/* Main content area */}
-          <div className="col-span-1 md:col-span-2 space-y-6">
-            {/* Profile settings */}
-            <section id="profile" className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark p-6 animate-slide-in">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Profile Settings</h2>
-              
-              <form onSubmit={handleProfileSubmit}>
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-4 mb-6">
-                    <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                      {profileForm.avatar ? (
-                        <img 
-                          src={profileForm.avatar} 
-                          alt={profileForm.name} 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="flex items-center justify-center h-full text-gray-400 text-xl">
-                          {profileForm.name.charAt(0)}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAvatarUpload}
-                      className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Photo
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Name
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={profileForm.name}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={profileForm.email}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Role
-                      </label>
-                      <input
-                        type="text"
-                        name="role"
-                        value={profileForm.role}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
-                        readOnly
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-end">
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm dark:bg-blue-700 dark:hover:bg-blue-800"
-                    >
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Profile
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </section>
-            
-            {/* Appearance Settings */}
-            <section id="appearance" className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark p-6 animate-slide-in">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Appearance</h2>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    {darkMode ? (
-                      <Moon className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
-                    ) : (
-                      <Sun className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {darkMode ? 'Dark Mode' : 'Light Mode'}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {darkMode 
-                          ? 'Switch to light mode for a brighter appearance' 
-                          : 'Switch to dark mode to reduce eye strain in low-light environments'
-                        }
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={handleAppearanceChange}
-                    className={`
-                      relative inline-flex items-center h-6 rounded-full w-11 
-                      ${darkMode ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
-                      transition-colors ease-in-out duration-200
-                    `}
-                  >
-                    <span
-                      className={`
-                        inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
-                        ${darkMode ? 'translate-x-6' : 'translate-x-1'}
-                      `}
-                    />
-                  </button>
-                </div>
-              </div>
-            </section>
-            
-            {/* Notification Settings */}
-            <section id="notifications" className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark p-6 animate-slide-in">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Notification Preferences</h2>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center">
-                    <Mail className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Email Notifications
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={() => handleNotificationSettingChange('emailNotifications')}
-                    className={`
-                      relative inline-flex items-center h-6 rounded-full w-11 
-                      ${notificationSettings.emailNotifications ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
-                      transition-colors ease-in-out duration-200
-                    `}
-                  >
-                    <span
-                      className={`
-                        inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
-                        ${notificationSettings.emailNotifications ? 'translate-x-6' : 'translate-x-1'}
-                      `}
-                    />
-                  </button>
-                </div>
-                
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center">
-                    <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Push Notifications
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={() => handleNotificationSettingChange('pushNotifications')}
-                    className={`
-                      relative inline-flex items-center h-6 rounded-full w-11 
-                      ${notificationSettings.pushNotifications ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
-                      transition-colors ease-in-out duration-200
-                    `}
-                  >
-                    <span
-                      className={`
-                        inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
-                        ${notificationSettings.pushNotifications ? 'translate-x-6' : 'translate-x-1'}
-                      `}
-                    />
-                  </button>
-                </div>
-                
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center">
-                    <Mail className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Weekly Digest
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={() => handleNotificationSettingChange('weeklyDigest')}
-                    className={`
-                      relative inline-flex items-center h-6 rounded-full w-11 
-                      ${notificationSettings.weeklyDigest ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
-                      transition-colors ease-in-out duration-200
-                    `}
-                  >
-                    <span
-                      className={`
-                        inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
-                        ${notificationSettings.weeklyDigest ? 'translate-x-6' : 'translate-x-1'}
-                      `}
-                    />
-                  </button>
-                </div>
-                
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center">
-                    <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Mention Alerts
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={() => handleNotificationSettingChange('mentionAlerts')}
-                    className={`
-                      relative inline-flex items-center h-6 rounded-full w-11 
-                      ${notificationSettings.mentionAlerts ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
-                      transition-colors ease-in-out duration-200
-                    `}
-                  >
-                    <span
-                      className={`
-                        inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
-                        ${notificationSettings.mentionAlerts ? 'translate-x-6' : 'translate-x-1'}
-                      `}
-                    />
-                  </button>
-                </div>
-                
-                <div className="flex items-center justify-between py-2">
-                  <div className="flex items-center">
-                    <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300 mr-3" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Task Reminders
-                    </span>
-                  </div>
-                  
-                  <button
-                    onClick={() => handleNotificationSettingChange('taskReminders')}
-                    className={`
-                      relative inline-flex items-center h-6 rounded-full w-11 
-                      ${notificationSettings.taskReminders ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
-                      transition-colors ease-in-out duration-200
-                    `}
-                  >
-                    <span
-                      className={`
-                        inline-block w-4 h-4 transform bg-white rounded-full transition ease-in-out duration-200
-                        ${notificationSettings.taskReminders ? 'translate-x-6' : 'translate-x-1'}
-                      `}
-                    />
-                  </button>
-                </div>
-              </div>
-            </section>
-          </div>
-        </div>
+        )}
       </div>
     </Layout>
   );

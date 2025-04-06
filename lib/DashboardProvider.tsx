@@ -485,26 +485,30 @@ function generateMockMessages(): Message[] {
     {
       id: 'msg-1',
       content: 'Welcome to the team chat! Feel free to ask any questions.',
-      sender: 'Alex Johnson',
-      timestamp: new Date(Date.now() - 3600000).toISOString() 
+      sender: 'emp-1', // Sarah Chen
+      senderName: 'Sarah Chen',
+      timestamp: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
     },
     {
       id: 'msg-2',
       content: 'Thanks! I need some help with the onboarding process.',
-      sender: 'Sarah Chen',
-      timestamp: new Date(Date.now() - 3000000).toISOString() 
+      sender: mockUser.id,
+      senderName: mockUser.name,
+      timestamp: new Date(Date.now() - 3000000).toISOString() // 50 minutes ago
     },
     {
       id: 'msg-3',
       content: 'Sure, I can help with that. What specific part of the onboarding process do you need assistance with?',
-      sender: 'Alex Johnson',
-      timestamp: new Date(Date.now() - 2700000).toISOString() 
+      sender: 'emp-1', // Sarah Chen
+      senderName: 'Sarah Chen',
+      timestamp: new Date(Date.now() - 2700000).toISOString() // 45 minutes ago
     },
     {
       id: 'msg-4',
       content: 'I just added some new design mockups to the shared folder. Can everyone take a look when you get a chance?',
-      sender: 'Emily Wang',
-      timestamp: new Date(Date.now() - 1800000).toISOString() 
+      sender: 'emp-2', // John Smith
+      senderName: 'John Smith',
+      timestamp: new Date(Date.now() - 1800000).toISOString() // 30 minutes ago
     }
   ];
 }
@@ -803,7 +807,7 @@ export function initializeMockData(dispatch: DashboardDispatch) {
           id: 'log-1',
           projectId: 'proj-1',
           userId: 'user-1',
-          userName: 'Alex Johnson',
+          userName: 'Admin User',
           action: 'Created project',
           timestamp: '2023-11-01T10:30:00Z',
         },
@@ -834,7 +838,7 @@ export function initializeMockData(dispatch: DashboardDispatch) {
           id: 'log-3',
           projectId: 'proj-2',
           userId: 'user-1',
-          userName: 'Alex Johnson',
+          userName: 'Admin User',
           action: 'Created project',
           timestamp: '2023-12-01T09:15:00Z',
         },
@@ -866,7 +870,7 @@ export function initializeMockData(dispatch: DashboardDispatch) {
           id: 'log-5',
           projectId: 'proj-3',
           userId: 'user-1',
-          userName: 'Alex Johnson',
+          userName: 'Admin User',
           action: 'Created project',
           timestamp: '2023-12-20T13:45:00Z',
         }
