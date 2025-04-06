@@ -35,36 +35,30 @@ export default function LoginPage() {
       setLoading(true);
       console.log('Login attempt with:', formData.email);
       
-      // Use XMLHttpRequest which handles cookies differently than fetch
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/auth', true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.withCredentials = true;
+      // Use direct fetch with proper credentials setting
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+        credentials: 'include', // Important for cookies
+      });
       
-      xhr.onload = function() {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          console.log('Login successful, redirecting to dashboard');
-          // Hard redirect to dashboard
-          window.location.href = '/';
-        } else {
-          let errorMsg = 'Invalid email or password';
-          try {
-            const response = JSON.parse(xhr.responseText);
-            errorMsg = response.error || errorMsg;
-          } catch (e) {}
-          
-          setError(errorMsg);
-          setLoading(false);
-        }
-      };
-      
-      xhr.onerror = function() {
-        setError('Network error occurred');
+      if (response.ok) {
+        console.log('Login successful, redirecting to dashboard');
+        // Hard redirect to dashboard - force page reload to bypass Next.js router
+        window.location.replace('/');
+      } else {
+        let errorMsg = 'Invalid email or password';
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch (e) {}
+        
+        setError(errorMsg);
         setLoading(false);
-      };
-      
-      xhr.send(JSON.stringify(formData));
-      
+      }
     } catch (err: any) {
       console.error('Login error:', err);
       setError('An unexpected error occurred');
