@@ -60,41 +60,18 @@ export default function Navbar() {
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
-  // Direct logout function with guaranteed redirect
+  // Simple direct logout function
   const handleLogout = () => {
-    try {
-      console.log('Starting logout process...');
-      setIsLoggingOut(true);
-      
-      // Clear user state in context
-      if (dispatch) {
-        dispatch({
-          type: ACTIONS.SET_CURRENT_USER,
-          payload: null
-        });
-      }
-      
-      // Clear all cookies
-      if (typeof document !== 'undefined') {
-        document.cookie.split(";").forEach(c => {
-          document.cookie = c.trim().split("=")[0] + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-        });
-      }
-      
-      console.log('Session cleared, redirecting to login page...');
-      
-      // Force redirect to login page - guaranteed approach
-      if (typeof window !== 'undefined') {
-        window.location.replace('/login');
-      }
-    } catch (error) {
-      console.error('Error in logout process:', error);
-      
-      // Even if everything else fails, redirect to login
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
-    }
+    // Show loading state
+    setIsLoggingOut(true);
+    
+    // Clear cookies to remove session
+    document.cookie.split(";").forEach(c => {
+      document.cookie = c.trim().split("=")[0] + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    });
+    
+    // Redirect to login page
+    window.location.href = '/login';
   };
 
   // Inside the user menu dropdown, add a role update option if current user has Admin capability
