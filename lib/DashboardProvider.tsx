@@ -315,11 +315,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       try {
         dispatch({ type: ACTIONS.SET_LOADING, payload: true });
         
+        console.log('Attempting to load user data...');
+        
         // Get current user from session
-        const user = await API.auth.getCurrentUser().catch(() => null);
+        const user = await API.auth.getCurrentUser().catch((e) => {
+          console.error('Error getting current user:', e);
+          return null;
+        });
         
         if (user) {
-          console.log('Retrieved authenticated user:', user);
+          console.log('Retrieved authenticated user:', JSON.stringify(user));
           dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: user });
           
           // Load other data after authentication

@@ -15,6 +15,11 @@ export default function Navbar() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const router = useRouter();
   
+  // Debug logging
+  useEffect(() => {
+    console.log('Current user in Navbar:', currentUser);
+  }, [currentUser]);
+  
   // Safely try to use ThemeProvider
   let themeContext;
   try {
@@ -120,7 +125,7 @@ export default function Navbar() {
         
         {currentUser && (
           <div className="flex items-center gap-2">
-            <div className="hidden sm:block">
+            <div className="block">
               <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{currentUser.name}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</div>
             </div>
