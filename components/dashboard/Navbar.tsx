@@ -60,25 +60,29 @@ export default function Navbar() {
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
-  // Handle logout
+  // Enhanced logout function with better error handling and logging
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
+      console.log('Logout initiated...');
       
       // Call the logout API
       const result = await API.auth.logout();
+      console.log('Logout API response:', result);
       
       if (result.success) {
+        console.log('Logout successful, clearing user state');
         // Clear the current user from state
         dispatch({
           type: ACTIONS.SET_CURRENT_USER,
           payload: null
         });
         
-        // Redirect to login page
-        router.push('/login');
+        // Force navigation to login page
+        console.log('Redirecting to login page...');
+        window.location.href = '/login'; // Using direct navigation instead of router for a complete refresh
       } else {
-        console.error('Logout failed:', result);
+        console.error('Logout returned success: false', result);
         alert('Logout failed. Please try again.');
       }
     } catch (error) {
@@ -230,6 +234,7 @@ export default function Navbar() {
           }`}
           aria-label="Logout"
           title="Logout"
+          data-testid="logout-button"
         >
           {isLoggingOut ? (
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 dark:border-gray-700 dark:border-t-gray-300"></div>
