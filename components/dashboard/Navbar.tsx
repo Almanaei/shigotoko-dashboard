@@ -64,10 +64,26 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
-      await API.auth.logout();
-      router.push('/login');
+      
+      // Call the logout API
+      const result = await API.auth.logout();
+      
+      if (result.success) {
+        // Clear the current user from state
+        dispatch({
+          type: ACTIONS.SET_CURRENT_USER,
+          payload: null
+        });
+        
+        // Redirect to login page
+        router.push('/login');
+      } else {
+        console.error('Logout failed:', result);
+        alert('Logout failed. Please try again.');
+      }
     } catch (error) {
       console.error('Logout error:', error);
+      alert('An error occurred during logout. Please try again.');
     } finally {
       setIsLoggingOut(false);
     }
@@ -207,10 +223,19 @@ export default function Navbar() {
         <button 
           onClick={handleLogout}
           disabled={isLoggingOut}
-          className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          className={`relative p-2 transition-colors duration-200 rounded-md ${
+            isLoggingOut 
+              ? 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed' 
+              : 'text-gray-500 hover:text-red-500 hover:bg-red-50 dark:text-gray-400 dark:hover:text-red-400 dark:hover:bg-red-900/20'
+          }`}
           aria-label="Logout"
+          title="Logout"
         >
-          <LogOut className="h-5 w-5" />
+          {isLoggingOut ? (
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600 dark:border-gray-700 dark:border-t-gray-300"></div>
+          ) : (
+            <LogOut className="h-5 w-5" />
+          )}
         </button>
         
         {currentUser && (

@@ -142,7 +142,7 @@ type ActionType = typeof ACTIONS[keyof typeof ACTIONS];
 
 // Action types with specific discriminated union
 type Action =
-  | { type: typeof ACTIONS.SET_CURRENT_USER; payload: User }
+  | { type: typeof ACTIONS.SET_CURRENT_USER; payload: User | null }
   | { type: typeof ACTIONS.SET_EMPLOYEES; payload: Employee[] }
   | { type: typeof ACTIONS.ADD_EMPLOYEE; payload: Employee }
   | { type: typeof ACTIONS.UPDATE_EMPLOYEE; payload: { id: string; employee: Partial<Employee> } }
