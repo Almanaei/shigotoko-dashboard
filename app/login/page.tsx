@@ -23,8 +23,8 @@ export default function LoginPage() {
       try {
         const user = await API.auth.getCurrentUser();
         if (user) {
-          // Redirect to dashboard if already logged in
-          window.location.href = '/';
+          // Hard redirect to dashboard if already logged in
+          window.location.replace('/');
         }
       } catch (error) {
         // User is not logged in, do nothing
@@ -44,7 +44,7 @@ export default function LoginPage() {
     setError(null);
   };
 
-  // Simplified login handler with API client
+  // Direct fetch login handler to ensure proper cookie handling
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -57,13 +57,26 @@ export default function LoginPage() {
       setLoading(true);
       console.log('Login attempt with:', formData.email);
       
-      // Use the API client for login
-      const user = await API.auth.login(formData);
+      // Use direct fetch instead of API client for better control
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+        credentials: 'include'
+      });
       
-      console.log('Login successful, redirecting...');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Login failed');
+      }
       
-      // Direct navigation to dashboard
-      window.location.href = '/';
+      const userData = await response.json();
+      console.log('Login successful:', userData);
+      
+      // Hard redirect to the root path (dashboard)
+      window.location.replace('/');
       
     } catch (err: any) {
       console.error('Login error:', err);
