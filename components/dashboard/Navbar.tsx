@@ -60,36 +60,40 @@ export default function Navbar() {
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
-  // Simplified direct logout function that bypasses the API
+  // Direct logout function with guaranteed redirect
   const handleLogout = () => {
     try {
+      console.log('Starting logout process...');
       setIsLoggingOut(true);
-      console.log('Performing direct logout...');
       
-      // Clear dashboard state
-      dispatch({
-        type: ACTIONS.SET_CURRENT_USER,
-        payload: null
-      });
+      // Clear user state in context
+      if (dispatch) {
+        dispatch({
+          type: ACTIONS.SET_CURRENT_USER,
+          payload: null
+        });
+      }
       
-      // Force clear all cookies - most important part
-      document.cookie.split(";").forEach(function(c) {
-        const cookieName = c.trim().split("=")[0];
-        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-      });
+      // Clear all cookies
+      if (typeof document !== 'undefined') {
+        document.cookie.split(";").forEach(c => {
+          document.cookie = c.trim().split("=")[0] + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        });
+      }
       
-      console.log('Cookies cleared, redirecting to login page...');
+      console.log('Session cleared, redirecting to login page...');
       
-      // Add a small delay to ensure state updates before redirect
-      setTimeout(() => {
-        // Use hard navigation to login page
-        window.location.href = '/login';
-      }, 100);
-      
+      // Force redirect to login page - guaranteed approach
+      if (typeof window !== 'undefined') {
+        window.location.replace('/login');
+      }
     } catch (error) {
-      console.error('Error during logout:', error);
-      // Last resort - direct redirect
-      window.location.href = '/login';
+      console.error('Error in logout process:', error);
+      
+      // Even if everything else fails, redirect to login
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
     }
   };
 
@@ -225,7 +229,10 @@ export default function Navbar() {
         </button>
         
         <button 
-          onClick={handleLogout}
+          onClick={() => {
+            handleLogout();
+            return false; // Prevent default
+          }}
           disabled={isLoggingOut}
           className={`relative p-2 transition-colors duration-200 rounded-md ${
             isLoggingOut 

@@ -17,21 +17,25 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Check if user is already logged in
+  // Enhance the session check to be more robust
   useEffect(() => {
     const checkSession = async () => {
       try {
+        console.log('Checking if user is already logged in...');
         const user = await API.auth.getCurrentUser();
         if (user) {
-          router.push('/');
+          console.log('User is already logged in, redirecting to dashboard...');
+          // Use direct window navigation for more reliable redirect
+          window.location.replace('/');
         }
       } catch (error) {
+        console.log('User is not logged in, showing login form');
         // User is not logged in, do nothing
       }
     };
 
     checkSession();
-  }, [router]);
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -42,6 +46,7 @@ export default function LoginPage() {
     setError(null);
   };
 
+  // Enhanced login submission with more reliable redirect
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -52,11 +57,13 @@ export default function LoginPage() {
     
     try {
       setLoading(true);
+      console.log('Attempting login...');
       const user = await API.auth.login(formData);
       
       if (user) {
-        // Login successful, redirect to dashboard
-        router.push('/');
+        console.log('Login successful, redirecting to dashboard...');
+        // Use direct window navigation for more reliable redirect
+        window.location.replace('/');
       }
     } catch (err) {
       console.error('Login error:', err);
