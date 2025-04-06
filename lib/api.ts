@@ -23,12 +23,35 @@ async function fetchAPI<T>(
   });
   
   if (!response.ok) {
-    const error = await response.json();
+    const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'An error occurred while fetching the data');
   }
   
   return response.json() as Promise<T>;
 }
+
+// Authentication API functions
+export const authAPI = {
+  // Login user
+  login: async (credentials: { email: string; password: string }) => {
+    return fetchAPI('/auth', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+  },
+  
+  // Logout user
+  logout: async () => {
+    return fetchAPI('/auth', {
+      method: 'DELETE',
+    });
+  },
+  
+  // Get current user
+  getCurrentUser: async () => {
+    return fetchAPI('/auth');
+  },
+};
 
 // Employee API functions
 export const employeeAPI = {
@@ -142,6 +165,7 @@ export const projectAPI = {
 
 // Export all API services
 export const API = {
+  auth: authAPI,
   employees: employeeAPI,
   departments: departmentAPI,
   projects: projectAPI,

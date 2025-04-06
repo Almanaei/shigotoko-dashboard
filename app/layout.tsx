@@ -8,19 +8,16 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Shigotoko Dashboard",
-  description: "A modern HR management dashboard",
-  icons: {
-    icon: '/favicon.ico',
-  }
+  description: "Modern dashboard for management and analytics",
 };
 
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode
-}) {
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider>
           <DashboardProvider>

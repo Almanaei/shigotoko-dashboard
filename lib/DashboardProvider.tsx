@@ -1,13 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
+import { API } from '@/lib/api';
 
 // Types
 export interface User {
   id: string;
   name: string;
   email: string;
-  avatar: string;
+  avatar?: string;
   role: string;
 }
 
@@ -291,50 +292,185 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
   }
 };
 
-// Creating Context
-const DashboardStateContext = createContext<DashboardState | undefined>(undefined);
-const DashboardDispatchContext = createContext<DashboardDispatch | undefined>(undefined);
+// Create the context
+const DashboardContext = createContext<{
+  state: DashboardState;
+  dispatch: React.Dispatch<Action>;
+}>({
+  state: initialState,
+  dispatch: () => null,
+});
 
-// Provider component
+// Dashboard provider component
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
 
-  // Initialize mock data
-  React.useEffect(() => {
-    initializeMockData(dispatch);
+  // Load user data on mount
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        dispatch({ type: ACTIONS.SET_LOADING, payload: true });
+        
+        // Get current user from session
+        const user = await API.auth.getCurrentUser().catch(() => null);
+        
+        if (user) {
+          dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: user });
+          
+          // Load other data after authentication
+          initializeData(dispatch);
+        } else {
+          // Use mock data for demo if no user is authenticated
+          initializeMockData(dispatch);
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        dispatch({ 
+          type: ACTIONS.SET_ERROR, 
+          payload: 'Failed to load user data. Please try again.' 
+        });
+        
+        // Fallback to mock data
+        initializeMockData(dispatch);
+      } finally {
+        dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+      }
+    };
+
+    loadUserData();
   }, []);
 
   return (
-    <DashboardStateContext.Provider value={state}>
-      <DashboardDispatchContext.Provider value={dispatch}>
-        {children}
-      </DashboardDispatchContext.Provider>
-    </DashboardStateContext.Provider>
+    <DashboardContext.Provider value={{ state, dispatch }}>
+      {children}
+    </DashboardContext.Provider>
   );
 }
 
-// Custom hooks to use the context
-export function useDashboardState() {
-  const context = useContext(DashboardStateContext);
-  if (context === undefined) {
-    throw new Error('useDashboardState must be used within a DashboardProvider');
-  }
-  return context;
-}
-
-export function useDashboardDispatch() {
-  const context = useContext(DashboardDispatchContext);
-  if (context === undefined) {
-    throw new Error('useDashboardDispatch must be used within a DashboardProvider');
-  }
-  return context;
-}
-
+// Custom hook to use the dashboard context
 export function useDashboard() {
-  return {
-    state: useDashboardState(),
-    dispatch: useDashboardDispatch()
-  };
+  const context = useContext(DashboardContext);
+  if (!context) {
+    throw new Error('useDashboard must be used within a DashboardProvider');
+  }
+  return context;
+}
+
+// Initialize data from API
+async function initializeData(dispatch: React.Dispatch<Action>) {
+  try {
+    // Fetch employees
+    const employees = await API.employees.getAll();
+    dispatch({ type: ACTIONS.SET_EMPLOYEES, payload: employees });
+    
+    // Fetch departments
+    const departments = await API.departments.getAll();
+    dispatch({ type: ACTIONS.SET_DEPARTMENTS, payload: departments });
+    
+    // Fetch projects
+    const projects = await API.projects.getAll();
+    dispatch({ type: ACTIONS.SET_PROJECTS, payload: projects });
+    
+    // Calculate stats
+    const stats = {
+      totalEmployees: employees.length,
+      totalRevenue: '$' + (Math.floor(Math.random() * 100000) + 50000),
+      turnoverRate: Math.floor(Math.random() * 10) + '%',
+      attendanceRate: (90 + Math.floor(Math.random() * 10)) + '%',
+      teamKPI: (75 + Math.floor(Math.random() * 20)) + '%'
+    };
+    
+    dispatch({ type: ACTIONS.SET_STATS, payload: stats });
+    
+    // For now, keep using mock data for notifications and messages
+    // TODO: Implement real API endpoints for these
+    
+    // Mock notifications
+    const mockNotifications = generateMockNotifications();
+    dispatch({ type: ACTIONS.SET_NOTIFICATIONS, payload: mockNotifications });
+    
+    // Mock messages
+    const mockMessages = generateMockMessages();
+    dispatch({ type: ACTIONS.SET_MESSAGES, payload: mockMessages });
+    
+  } catch (error) {
+    console.error('Error initializing data:', error);
+    dispatch({ 
+      type: ACTIONS.SET_ERROR, 
+      payload: 'Failed to load dashboard data. Please refresh the page.' 
+    });
+    
+    // Fallback to mock data
+    initializeMockData(dispatch);
+  }
+}
+
+// Generate mock notifications
+function generateMockNotifications(): Notification[] {
+  return [
+    {
+      id: 'notif-1',
+      title: 'New Task Assigned',
+      message: 'You have been assigned a new task: Dashboard redesign',
+      type: 'task',
+      read: false,
+      timestamp: new Date(Date.now() - 3600000) // 1 hour ago
+    },
+    {
+      id: 'notif-2',
+      title: 'Project Update',
+      message: 'Website project is now 60% complete',
+      type: 'project',
+      read: true,
+      timestamp: new Date(Date.now() - 86400000) // 1 day ago
+    },
+    {
+      id: 'notif-3',
+      title: 'Meeting Reminder',
+      message: 'Team meeting in 30 minutes',
+      type: 'reminder',
+      read: false,
+      timestamp: new Date(Date.now() - 1800000) // 30 minutes ago
+    },
+    {
+      id: 'notif-4',
+      title: 'System Update',
+      message: 'System maintenance scheduled for tonight',
+      type: 'system',
+      read: false,
+      timestamp: new Date(Date.now() - 7200000) // 2 hours ago
+    }
+  ];
+}
+
+// Generate mock messages
+function generateMockMessages(): Message[] {
+  return [
+    {
+      id: 'msg-1',
+      content: 'Welcome to the team chat! Feel free to ask any questions.',
+      sender: 'Alex Johnson',
+      timestamp: new Date(Date.now() - 3600000) // 1 hour ago
+    },
+    {
+      id: 'msg-2',
+      content: 'Thanks! I need some help with the onboarding process.',
+      sender: 'Sarah Chen',
+      timestamp: new Date(Date.now() - 3000000) // 50 minutes ago
+    },
+    {
+      id: 'msg-3',
+      content: 'Sure, I can help with that. What specific part of the onboarding process do you need assistance with?',
+      sender: 'Alex Johnson',
+      timestamp: new Date(Date.now() - 2700000) // 45 minutes ago
+    },
+    {
+      id: 'msg-4',
+      content: 'I just added some new design mockups to the shared folder. Can everyone take a look when you get a chance?',
+      sender: 'Emily Wang',
+      timestamp: new Date(Date.now() - 1800000) // 30 minutes ago
+    }
+  ];
 }
 
 // Mock data initialization

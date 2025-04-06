@@ -1,15 +1,19 @@
 "use client";
 
-import { Bell, Search, Calendar, MessageCircle, Moon, Sun } from 'lucide-react';
+import { Bell, Search, Calendar, MessageCircle, Moon, Sun, LogOut } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useDashboard } from '@/lib/DashboardProvider';
 import { useTheme } from '@/lib/ThemeProvider';
+import { useRouter } from 'next/navigation';
+import { API } from '@/lib/api';
 
 export default function Navbar() {
   const { state } = useDashboard();
   const { currentUser, notifications } = state;
   const [mounted, setMounted] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const router = useRouter();
   
   // Safely try to use ThemeProvider
   let themeContext;
@@ -47,17 +51,30 @@ export default function Navbar() {
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await API.auth.logout();
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   return (
-    <header className="border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-card py-3 px-6 flex items-center justify-between shadow-sm dark:shadow-card-dark">
-      <div className="flex items-center">
-        <div className="relative lg:min-w-64">
+    <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 px-4 flex items-center justify-between">
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1 flex items-center">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-4 w-4 text-gray-400 dark:text-gray-500" />
           </div>
           <input
             type="text"
             placeholder="Search..."
-            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 dark:text-gray-200"
+            className="block w-full max-w-xs pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 dark:text-gray-200"
           />
         </div>
       </div>
@@ -93,14 +110,32 @@ export default function Navbar() {
           )}
         </button>
         
+        <button 
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>
+        
         {currentUser && (
           <div className="flex items-center gap-2">
             <div className="hidden sm:block">
               <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{currentUser.name}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</div>
             </div>
-            <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm">
-              {currentUser.name.charAt(0) + currentUser.name.split(' ')[1]?.charAt(0) || ''}
+            <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm overflow-hidden">
+              {currentUser.avatar ? (
+                <img 
+                  src={currentUser.avatar} 
+                  alt={currentUser.name} 
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span>
+                  {currentUser.name.charAt(0) + (currentUser.name.split(' ')[1]?.charAt(0) || '')}
+                </span>
+              )}
             </div>
           </div>
         )}
