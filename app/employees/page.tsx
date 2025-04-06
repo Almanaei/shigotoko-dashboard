@@ -64,8 +64,8 @@ export default function EmployeesPage() {
           API.employees.getAll(),
           API.departments.getAll()
         ]);
-        setEmployees(employeesData);
-        setDepartments(departmentsData);
+        setEmployees(employeesData as Employee[]);
+        setDepartments(departmentsData as Department[]);
         setError(null);
       } catch (err) {
         console.error('Error fetching data:', err);
@@ -104,10 +104,15 @@ export default function EmployeesPage() {
         comparison = 1;
       }
     } else {
-      if (a[sortField] < b[sortField]) {
-        comparison = -1;
-      } else if (a[sortField] > b[sortField]) {
-        comparison = 1;
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+      
+      if (aValue !== undefined && bValue !== undefined) {
+        if (aValue < bValue) {
+          comparison = -1;
+        } else if (aValue > bValue) {
+          comparison = 1;
+        }
       }
     }
     
@@ -176,12 +181,12 @@ export default function EmployeesPage() {
     try {
       setLoading(true);
       const newEmployee = await API.employees.create(formData);
-      setEmployees(prevEmployees => [...prevEmployees, newEmployee]);
+      setEmployees(prevEmployees => [...prevEmployees, newEmployee as Employee]);
       setShowAddModal(false);
       
       // Refresh departments to update the employee count
       const updatedDepartments = await API.departments.getAll();
-      setDepartments(updatedDepartments);
+      setDepartments(updatedDepartments as Department[]);
     } catch (err) {
       console.error('Error adding employee:', err);
       setError('Failed to add employee. Please try again.');
@@ -200,7 +205,7 @@ export default function EmployeesPage() {
         
         setEmployees(prevEmployees =>
           prevEmployees.map(emp => 
-            emp.id === updatedEmployee.id ? updatedEmployee : emp
+            emp.id === (updatedEmployee as Employee).id ? (updatedEmployee as Employee) : emp
           )
         );
         
@@ -208,7 +213,7 @@ export default function EmployeesPage() {
         
         // Refresh departments to update the employee count if department changed
         const updatedDepartments = await API.departments.getAll();
-        setDepartments(updatedDepartments);
+        setDepartments(updatedDepartments as Department[]);
       } catch (err) {
         console.error('Error updating employee:', err);
         setError('Failed to update employee. Please try again.');
@@ -234,7 +239,7 @@ export default function EmployeesPage() {
         
         // Refresh departments to update the employee count
         const updatedDepartments = await API.departments.getAll();
-        setDepartments(updatedDepartments);
+        setDepartments(updatedDepartments as Department[]);
       } catch (err) {
         console.error('Error deleting employee:', err);
         setError('Failed to delete employee. Please try again.');
