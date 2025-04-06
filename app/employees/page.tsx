@@ -1,14 +1,41 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Layout from '@/components/dashboard/Layout';
-import { useDashboard } from '@/lib/DashboardProvider';
-import { ACTIONS, Employee } from '@/lib/DashboardProvider';
-import { Search, Filter, Plus, MoreHorizontal, ArrowUp, ArrowDown, Edit2, Trash2, Eye, Mail, Phone, X } from 'lucide-react';
+import { API } from '@/lib/api';
+import { Search, Filter, Plus, MoreHorizontal, ArrowUp, ArrowDown, Edit2, Trash2, Eye, Mail, Phone, X, Loader2 } from 'lucide-react';
+
+interface Employee {
+  id: string;
+  name: string;
+  position: string;
+  department: {
+    id: string;
+    name: string;
+    color?: string;
+  };
+  departmentId: string;
+  email: string;
+  phone?: string;
+  avatar?: string;
+  status: string;
+  joinDate: string;
+  performance: number;
+}
+
+interface Department {
+  id: string;
+  name: string;
+  description?: string;
+  employeeCount: number;
+  color?: string;
+}
 
 export default function EmployeesPage() {
-  const { state, dispatch } = useDashboard();
-  const { employees } = state;
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<keyof Employee>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -20,7 +47,7 @@ export default function EmployeesPage() {
   const [formData, setFormData] = useState<Partial<Employee>>({
     name: '',
     position: '',
-    department: '',
+    departmentId: '',
     email: '',
     phone: '',
     status: 'active',
@@ -28,16 +55,39 @@ export default function EmployeesPage() {
     performance: 50
   });
 
+  // Fetch employees and departments
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [employeesData, departmentsData] = await Promise.all([
+          API.employees.getAll(),
+          API.departments.getAll()
+        ]);
+        setEmployees(employeesData);
+        setDepartments(departmentsData);
+        setError(null);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        setError('Failed to load data. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   // Filter employees based on search term and department
   const filteredEmployees = employees.filter((employee) => {
     const matchesSearch = searchTerm
       ? employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         employee.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        employee.department.toLowerCase().includes(searchTerm.toLowerCase())
+        employee.department.name.toLowerCase().includes(searchTerm.toLowerCase())
       : true;
     
     const matchesDepartment = selectedDepartment === 'all' || 
-      employee.department.toLowerCase() === selectedDepartment.toLowerCase();
+      employee.departmentId === selectedDepartment;
     
     return matchesSearch && matchesDepartment;
   });
@@ -45,11 +95,22 @@ export default function EmployeesPage() {
   // Sort employees
   const sortedEmployees = [...filteredEmployees].sort((a, b) => {
     let comparison = 0;
-    if (a[sortField] < b[sortField]) {
-      comparison = -1;
-    } else if (a[sortField] > b[sortField]) {
-      comparison = 1;
+    
+    // Handle nested properties
+    if (sortField === 'department') {
+      if (a.department.name < b.department.name) {
+        comparison = -1;
+      } else if (a.department.name > b.department.name) {
+        comparison = 1;
+      }
+    } else {
+      if (a[sortField] < b[sortField]) {
+        comparison = -1;
+      } else if (a[sortField] > b[sortField]) {
+        comparison = 1;
+      }
     }
+    
     return sortDirection === 'asc' ? comparison : comparison * -1;
   });
 
@@ -73,7 +134,7 @@ export default function EmployeesPage() {
     setFormData({
       name: '',
       position: '',
-      department: '',
+      departmentId: departments.length > 0 ? departments[0].id : '',
       email: '',
       phone: '',
       status: 'active',
@@ -86,7 +147,10 @@ export default function EmployeesPage() {
   // Handle edit employee
   const handleEditEmployee = (e: React.MouseEvent, employee: Employee) => {
     e.stopPropagation();
-    setFormData({ ...employee });
+    setFormData({ 
+      ...employee,
+      joinDate: new Date(employee.joinDate).toISOString().split('T')[0]
+    });
     setShowEditModal(true);
   };
 
@@ -107,41 +171,76 @@ export default function EmployeesPage() {
   };
 
   // Handle form submit for adding employee
-  const handleSubmitAddEmployee = (e: React.FormEvent) => {
+  const handleSubmitAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newEmployee: Employee = {
-      id: `emp-${Date.now()}`,
-      avatar: '',
-      ...formData as Omit<Employee, 'id' | 'avatar'>
-    };
-    dispatch({ type: ACTIONS.ADD_EMPLOYEE, payload: newEmployee });
-    setShowAddModal(false);
+    try {
+      setLoading(true);
+      const newEmployee = await API.employees.create(formData);
+      setEmployees(prevEmployees => [...prevEmployees, newEmployee]);
+      setShowAddModal(false);
+      
+      // Refresh departments to update the employee count
+      const updatedDepartments = await API.departments.getAll();
+      setDepartments(updatedDepartments);
+    } catch (err) {
+      console.error('Error adding employee:', err);
+      setError('Failed to add employee. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle form submit for editing employee
-  const handleSubmitEditEmployee = (e: React.FormEvent) => {
+  const handleSubmitEditEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.id) {
-      dispatch({
-        type: ACTIONS.UPDATE_EMPLOYEE,
-        payload: {
-          id: formData.id,
-          employee: formData
-        }
-      });
+      try {
+        setLoading(true);
+        const updatedEmployee = await API.employees.update(formData.id, formData);
+        
+        setEmployees(prevEmployees =>
+          prevEmployees.map(emp => 
+            emp.id === updatedEmployee.id ? updatedEmployee : emp
+          )
+        );
+        
+        setShowEditModal(false);
+        
+        // Refresh departments to update the employee count if department changed
+        const updatedDepartments = await API.departments.getAll();
+        setDepartments(updatedDepartments);
+      } catch (err) {
+        console.error('Error updating employee:', err);
+        setError('Failed to update employee. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     }
-    setShowEditModal(false);
   };
 
   // Handle confirm delete
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (selectedEmployee) {
-      dispatch({
-        type: ACTIONS.DELETE_EMPLOYEE,
-        payload: selectedEmployee.id
-      });
-      setShowDeleteModal(false);
-      setSelectedEmployee(null);
+      try {
+        setLoading(true);
+        await API.employees.delete(selectedEmployee.id);
+        
+        setEmployees(prevEmployees =>
+          prevEmployees.filter(emp => emp.id !== selectedEmployee.id)
+        );
+        
+        setShowDeleteModal(false);
+        setSelectedEmployee(null);
+        
+        // Refresh departments to update the employee count
+        const updatedDepartments = await API.departments.getAll();
+        setDepartments(updatedDepartments);
+      } catch (err) {
+        console.error('Error deleting employee:', err);
+        setError('Failed to delete employee. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -327,7 +426,7 @@ export default function EmployeesPage() {
                       <div className="text-sm text-gray-900 dark:text-white">{employee.position}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900 dark:text-white">{employee.department}</div>
+                      <div className="text-sm text-gray-900 dark:text-white">{employee.department.name}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
@@ -456,7 +555,7 @@ export default function EmployeesPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Department</p>
-                        <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedEmployee.department}</p>
+                        <p className="mt-1 text-sm text-gray-900 dark:text-white">{selectedEmployee.department.name}</p>
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Status</p>
@@ -580,17 +679,16 @@ export default function EmployeesPage() {
                       Department
                     </label>
                     <select
-                      name="department"
+                      name="departmentId"
                       required
-                      value={formData.department}
+                      value={formData.departmentId}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
                     >
                       <option value="">Select department</option>
-                      <option value="design">Design</option>
-                      <option value="engineering">Engineering</option>
-                      <option value="marketing">Marketing</option>
-                      <option value="hr">HR</option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>{department.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -629,7 +727,6 @@ export default function EmployeesPage() {
                     <input
                       type="tel"
                       name="phone"
-                      required
                       value={formData.phone}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
@@ -734,17 +831,16 @@ export default function EmployeesPage() {
                       Department
                     </label>
                     <select
-                      name="department"
+                      name="departmentId"
                       required
-                      value={formData.department}
+                      value={formData.departmentId}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
                     >
                       <option value="">Select department</option>
-                      <option value="design">Design</option>
-                      <option value="engineering">Engineering</option>
-                      <option value="marketing">Marketing</option>
-                      <option value="hr">HR</option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>{department.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -783,7 +879,6 @@ export default function EmployeesPage() {
                     <input
                       type="tel"
                       name="phone"
-                      required
                       value={formData.phone}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"

@@ -1,0 +1,145 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String          @id @default(uuid())
+  name          String
+  email         String          @unique
+  avatar        String?
+  role          String
+  department    String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  notifications Notification[]
+  messages      Message[]
+}
+
+model Employee {
+  id          String        @id @default(uuid())
+  name        String
+  position    String
+  department  Department    @relation(fields: [departmentId], references: [id])
+  departmentId String
+  email       String        @unique
+  phone       String?
+  avatar      String?
+  status      String
+  joinDate    DateTime
+  performance Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  projects    ProjectsOnEmployees[]
+  messages    Message[]
+}
+
+model Department {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  employeeCount Int       @default(0)
+  color       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  employees   Employee[]
+}
+
+model Project {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  status      String
+  progress    Int         @default(0)
+  startDate   DateTime
+  endDate     DateTime?
+  budget      Float?
+  client      String?
+  priority    String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  members     ProjectsOnEmployees[]
+  tasks       Task[]
+  logs        ProjectLog[]
+}
+
+model ProjectsOnEmployees {
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  employeeId  String
+  project     Project     @relation(fields: [projectId], references: [id])
+  projectId   String
+  role        String?
+  assignedAt  DateTime    @default(now())
+
+  @@id([employeeId, projectId])
+}
+
+model Task {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  status      String
+  priority    String
+  dueDate     DateTime?
+  project     Project?    @relation(fields: [projectId], references: [id])
+  projectId   String?
+  assigneeId  String?     // Employee ID
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Message {
+  id          String      @id @default(uuid())
+  content     String
+  sender      User?       @relation(fields: [senderId], references: [id])
+  senderId    String?
+  employee    Employee?   @relation(fields: [employeeId], references: [id])
+  employeeId  String?
+  senderName  String?     // For legacy messages or system messages
+  timestamp   DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Notification {
+  id          String      @id @default(uuid())
+  title       String
+  message     String
+  type        String
+  read        Boolean     @default(false)
+  user        User        @relation(fields: [userId], references: [id])
+  userId      String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model ProjectLog {
+  id          String      @id @default(uuid())
+  action      String
+  description String
+  project     Project     @relation(fields: [projectId], references: [id])
+  projectId   String
+  timestamp   DateTime    @default(now())
+}
+
+model Stats {
+  id            String    @id @default(uuid())
+  totalEmployees Int
+  totalProjects  Int
+  totalTasks     Int
+  completedTasks Int
+  ongoingProjects Int
+  monthlyData    Json?    // Store monthly statistics as JSON
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
