@@ -1,52 +1,56 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Define routes that don't require authentication
-const publicRoutes = ['/login', '/register', '/forgot-password', '/api/auth'];
-
+// Middleware function to run on every request
 export function middleware(request: NextRequest) {
-  // Get the pathname from the request
+  // Get the pathname of the request (e.g. /, /about, /api/auth)
   const path = request.nextUrl.pathname;
-
-  // Check if the path is a public route
-  const isPublicRoute = publicRoutes.some(route => 
-    path === route || path.startsWith(`${route}/`)
-  );
-
-  // Check if API request (except auth API)
-  const isApiRoute = path.startsWith('/api/') && !path.startsWith('/api/auth');
-
-  // Check if the user is authenticated - FIXED: use session-token with hyphen to match auth.ts
-  const sessionToken = request.cookies.get('session-token')?.value;
-  const isAuthenticated = !!sessionToken;
-
-  // If it's an API route, just continue (API routes handle auth internally)
-  if (isApiRoute) {
+  
+  console.log('Middleware: Processing request for path:', path);
+  
+  // Define paths that don't require authentication
+  const isPublicPath = path === '/login' || path === '/register';
+  
+  // Don't apply auth protection to API routes - API routes handle their own auth
+  if (path.startsWith('/api/')) {
+    console.log('Middleware: API route, skipping auth check');
     return NextResponse.next();
   }
-
-  // Redirect unauthenticated users to login
-  if (!isAuthenticated && !isPublicRoute) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-
-  // Redirect authenticated users trying to access login page
-  if (isAuthenticated && path === '/login') {
+  
+  // Check if user is authenticated
+  const sessionToken = request.cookies.get('session-token')?.value;
+  
+  console.log('Middleware: sessionToken exists:', !!sessionToken);
+  
+  // If the request is for the login or register page and the user is authenticated,
+  // redirect them to the dashboard
+  if (isPublicPath && sessionToken) {
+    console.log('Middleware: User has session token and is trying to access public path. Redirecting to dashboard.');
     return NextResponse.redirect(new URL('/', request.url));
   }
-
-  // Continue for authenticated users or public routes
+  
+  // If the request is not for a public path and the user is not authenticated,
+  // redirect them to the login page
+  if (!isPublicPath && !sessionToken) {
+    console.log('Middleware: User does not have session token and is trying to access protected path. Redirecting to login.');
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+  
+  console.log('Middleware: Request is allowed to proceed normally');
   return NextResponse.next();
 }
 
 // Configure the middleware to run on specific paths
 export const config = {
+  // Match all request paths except for static files and Next.js internals
   matcher: [
-    // Match all request paths except for those starting with these paths:
-    // - _next/static (static files)
-    // - _next/image (image optimization files)
-    // - favicon.ico (favicon file)
-    // - public files (images, etc.)
-    '/((?!_next/static|_next/image|favicon.ico|avatars/).*)',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - public folder files (e.g. /images, /fonts, /icons)
+     * - favicon.ico, robots.txt (common static files)
+     */
+    '/((?!_next/static|_next/image|images|favicon.ico|robots.txt|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
   ],
 }; 
