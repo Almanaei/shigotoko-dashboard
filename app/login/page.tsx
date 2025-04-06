@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { API } from '@/lib/api';
 import { AtSign, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
@@ -17,22 +16,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Basic session check - once on mount only
+  // Check for existing session cookie on page load
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const user = await API.auth.getCurrentUser();
-        if (user) {
-          // Hard redirect to dashboard if already logged in
-          window.location.replace('/');
-        }
-      } catch (error) {
-        // User is not logged in, do nothing
-        console.log('User not logged in, showing login form');
-      }
-    };
-
-    checkSession();
+    // Check for session token cookie
+    const hasCookie = document.cookie.split(';').some(c => {
+      return c.trim().startsWith('session-token=');
+    });
+    
+    if (hasCookie) {
+      console.log('Found session cookie, redirecting to dashboard');
+      window.location.href = '/';
+    }
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,7 +38,7 @@ export default function LoginPage() {
     setError(null);
   };
 
-  // Direct fetch login handler to ensure proper cookie handling
+  // Super simple login approach with a forced page reload
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -55,9 +49,9 @@ export default function LoginPage() {
     
     try {
       setLoading(true);
-      console.log('Login attempt with:', formData.email);
+      console.log('Attempting login with:', formData.email);
       
-      // Use direct fetch instead of API client for better control
+      // Direct fetch to API
       const response = await fetch('/api/auth', {
         method: 'POST',
         headers: {
@@ -67,16 +61,19 @@ export default function LoginPage() {
         credentials: 'include'
       });
       
+      const data = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Login failed');
+        throw new Error(data.error || 'Login failed');
       }
       
-      const userData = await response.json();
-      console.log('Login successful:', userData);
+      console.log('Login successful, user data:', data);
       
-      // Hard redirect to the root path (dashboard)
-      window.location.replace('/');
+      // Set a flag in localStorage to indicate successful login
+      localStorage.setItem('justLoggedIn', 'true');
+      
+      // Force reload the entire page to dashboard
+      window.location.href = '/';
       
     } catch (err: any) {
       console.error('Login error:', err);

@@ -65,6 +65,9 @@ export default function Navbar() {
     // Show loading state
     setIsLoggingOut(true);
     
+    // Clear any login flags
+    localStorage.removeItem('justLoggedIn');
+    
     // Clear cookies to remove session
     document.cookie.split(";").forEach(c => {
       document.cookie = c.trim().split("=")[0] + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
