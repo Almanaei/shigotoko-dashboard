@@ -65,6 +65,14 @@ export const authAPI = {
       return null;
     }
   },
+  
+  // Update user role
+  updateUser: async (userId: string, role: string): Promise<User> => {
+    return fetchAPI<User>('/auth', {
+      method: 'PATCH',
+      body: JSON.stringify({ userId, role }),
+    });
+  },
 };
 
 // Employee API functions

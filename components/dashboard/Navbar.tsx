@@ -2,18 +2,19 @@
 
 import { Bell, Search, Calendar, MessageCircle, Moon, Sun, LogOut } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { useDashboard } from '@/lib/DashboardProvider';
+import { useDashboard, ACTIONS } from '@/lib/DashboardProvider';
 import { useTheme } from '@/lib/ThemeProvider';
 import { useRouter } from 'next/navigation';
 import { API } from '@/lib/api';
 
 export default function Navbar() {
-  const { state } = useDashboard();
+  const { state, dispatch } = useDashboard();
   const { currentUser, notifications } = state;
   const [mounted, setMounted] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const router = useRouter();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   
   // Debug logging
   useEffect(() => {
@@ -71,6 +72,78 @@ export default function Navbar() {
       setIsLoggingOut(false);
     }
   };
+
+  // Inside the user menu dropdown, add a role update option if current user has Admin capability
+  const userMenuItems = currentUser ? (
+    <div className="py-1">
+      <a
+        href="/profile"
+        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+      >
+        Your Profile
+      </a>
+      <a
+        href="/settings"
+        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+      >
+        Settings
+      </a>
+      
+      {/* Add admin options if user is Admin */}
+      {currentUser.role === 'Admin' && (
+        <>
+          <hr className="my-1 border-gray-200 dark:border-gray-600" />
+          <div className="block px-4 py-1 text-xs text-gray-500 dark:text-gray-400">
+            Admin Actions
+          </div>
+          
+          <button
+            onClick={async () => {
+              try {
+                // Find the user "Almanaei" in employees
+                const almanaeiUser = await API.auth.getCurrentUser();
+                
+                // Only update if we found the user and they're not already Admin
+                if (almanaeiUser && almanaeiUser.role !== 'Admin') {
+                  console.log('Updating Almanaei role to Admin');
+                  const updatedUser = await API.auth.updateUser(almanaeiUser.id, 'Admin');
+                  
+                  if (updatedUser) {
+                    // Update the current user in the dashboard state
+                    dispatch({
+                      type: ACTIONS.SET_CURRENT_USER,
+                      payload: updatedUser
+                    });
+                    
+                    // Show success notification
+                    alert('Role updated to Admin successfully!');
+                  }
+                } else {
+                  alert(almanaeiUser?.role === 'Admin' 
+                    ? 'User already has Admin role!' 
+                    : 'User not found!');
+                }
+              } catch (error) {
+                console.error('Error updating role:', error);
+                alert('Failed to update role. See console for details.');
+              }
+            }}
+            className="w-full text-left px-4 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            Make Admin
+          </button>
+        </>
+      )}
+      
+      <hr className="my-1 border-gray-200 dark:border-gray-600" />
+      <button
+        onClick={handleLogout}
+        className="block w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+      >
+        Sign out
+      </button>
+    </div>
+  ) : null;
 
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 px-4 flex items-center justify-between">
@@ -161,6 +234,48 @@ export default function Navbar() {
             </div>
           </div>
         )}
+
+        {/* User dropdown */}
+        <div className="relative ml-3">
+          <div>
+            <button
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-gray-500 dark:focus:ring-gray-400"
+              id="user-menu-button"
+              aria-expanded="false"
+              aria-haspopup="true"
+            >
+              <span className="sr-only">Open user menu</span>
+              {currentUser?.avatar ? (
+                <img
+                  className="h-8 w-8 rounded-full object-cover"
+                  src={currentUser.avatar}
+                  alt={currentUser.name}
+                />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
+                  {currentUser?.name
+                    .split(' ')
+                    .map(n => n[0])
+                    .join('')
+                    .toUpperCase()}
+                </div>
+              )}
+            </button>
+          </div>
+
+          <div
+            className={`origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none ${
+              isUserMenuOpen ? 'block' : 'hidden'
+            }`}
+            role="menu"
+            aria-orientation="vertical"
+            aria-labelledby="user-menu-button"
+            tabIndex={-1}
+          >
+            {userMenuItems}
+          </div>
+        </div>
       </div>
     </header>
   );
