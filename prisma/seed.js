@@ -28,8 +28,20 @@ async function main() {
         department: 'Design',
       },
     });
+    
+    // Add Almanaei user - this will allow user to login as "Almanaei" instead of being logged in as alex
+    const almanaeiUser = await prisma.user.create({
+      data: {
+        name: 'Almanaei',
+        email: 'almanaei@shigotoko.com',
+        password: 'password123', // In a real app, this would be hashed
+        avatar: '/avatars/default-1.jpg',
+        role: 'Admin',
+        department: 'Engineering',
+      },
+    });
 
-    console.log('Created users:', { alexUser, sarahUser });
+    console.log('Created users:', { alexUser, sarahUser, almanaeiUser });
     
     // Create departments first
     const engineeringDept = await prisma.department.create({

@@ -159,6 +159,25 @@ export default function LoginPage() {
             </div>
           </form>
           
+          {/* Test accounts info section */}
+          <div className="mt-8 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-200 mb-2">Test Accounts:</p>
+            <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
+              <div className="flex justify-between">
+                <span>Almanaei (Admin):</span>
+                <span className="font-mono">almanaei@shigotoko.com / password123</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Alex (Admin):</span>
+                <span className="font-mono">alex@shigotoko.com / password123</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Sarah (Manager):</span>
+                <span className="font-mono">sarah@shigotoko.com / password123</span>
+              </div>
+            </div>
+          </div>
+          
           <p className="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
             Don't have an account?{' '}
             <Link href="/register" className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 font-medium">
