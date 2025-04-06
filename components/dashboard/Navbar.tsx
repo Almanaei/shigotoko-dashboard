@@ -183,6 +183,15 @@ export default function Navbar() {
       </div>
       
       <div className="flex items-center gap-4">
+        {/* Display username prominently */}
+        {currentUser && (
+          <div className="hidden md:flex items-center px-3 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-100 dark:border-blue-800">
+            <span className="font-medium text-blue-700 dark:text-blue-300">
+              {currentUser.name}
+            </span>
+          </div>
+        )}
+        
         {mounted && (
           <button 
             className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
@@ -242,14 +251,21 @@ export default function Navbar() {
           )}
         </button>
         
+        {/* Mobile user info - shows only on small screens */}
+        {currentUser && (
+          <div className="md:hidden flex items-center gap-2">
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{currentUser.name}</div>
+          </div>
+        )}
+        
+        {/* User avatar and dropdown */}
         {currentUser && (
           <div className="flex items-center gap-2">
-            <div className="block">
-              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{currentUser.name}</div>
+            <div className="hidden md:block">
               <div className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</div>
             </div>
             <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm overflow-hidden">
-              {currentUser.avatar ? (
+              {currentUser.avatar && currentUser.avatar.startsWith('http') ? (
                 <img 
                   src={currentUser.avatar} 
                   alt={currentUser.name} 
@@ -257,7 +273,12 @@ export default function Navbar() {
                 />
               ) : (
                 <span>
-                  {currentUser.name.charAt(0) + (currentUser.name.split(' ')[1]?.charAt(0) || '')}
+                  {currentUser.name
+                    .split(' ')
+                    .map(part => part.charAt(0))
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
                 </span>
               )}
             </div>
@@ -275,7 +296,7 @@ export default function Navbar() {
               aria-haspopup="true"
             >
               <span className="sr-only">Open user menu</span>
-              {currentUser?.avatar ? (
+              {currentUser?.avatar && currentUser.avatar.startsWith('http') ? (
                 <img
                   className="h-8 w-8 rounded-full object-cover"
                   src={currentUser.avatar}
@@ -285,7 +306,8 @@ export default function Navbar() {
                 <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
                   {currentUser?.name
                     .split(' ')
-                    .map(n => n[0])
+                    .map(part => part.charAt(0))
+                    .slice(0, 2)
                     .join('')
                     .toUpperCase()}
                 </div>

@@ -31,7 +31,11 @@ export function generateAvatarUrl(name: string, customBackground?: string): stri
     background = colors[charCode % colors.length];
   }
   
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${background}&color=fff`;
+  // Make sure we have at least one character for the initials
+  const displayInitials = initials || 'U';
+  
+  // Generate URL with properly encoded parameters
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayInitials)}&background=${background}&color=fff&size=256&bold=true`;
 }
 
 /**

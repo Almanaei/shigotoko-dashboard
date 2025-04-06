@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '@/components/dashboard/Layout';
 import { useDashboard } from '@/lib/DashboardProvider';
 import { ACTIONS } from '@/lib/DashboardProvider';
@@ -64,15 +64,32 @@ export default function SettingsPage() {
   const [showAvatarSelector, setShowAvatarSelector] = useState(false);
   
   // Define some default avatar options (using color placeholders until real avatars are added)
-  const avatarOptions = [
-    '/avatar-placeholder.png',
-    'https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff',
-    'https://ui-avatars.com/api/?name=User&background=27AE60&color=fff',
-    'https://ui-avatars.com/api/?name=User&background=E74C3C&color=fff',
-    'https://ui-avatars.com/api/?name=User&background=F1C40F&color=fff',
-    'https://ui-avatars.com/api/?name=User&background=8E44AD&color=fff',
-    'https://ui-avatars.com/api/?name=User&background=D35400&color=fff',
-  ];
+  const avatarOptions = useMemo(() => {
+    // Generate personalized avatar URLs with the user's initials
+    const initials = profileForm.name
+      .split(' ')
+      .map(part => part.charAt(0))
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+      
+    const colorOptions = [
+      '0D8ABC', // Blue
+      '27AE60', // Green
+      'E74C3C', // Red
+      'F1C40F', // Yellow
+      '8E44AD', // Purple
+      'D35400', // Orange
+    ];
+    
+    // Create options with user's initials
+    const personalizedOptions = colorOptions.map(color => 
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${color}&color=fff&size=256&bold=true`
+    );
+    
+    // Add default placeholder
+    return ['/avatar-placeholder.png', ...personalizedOptions];
+  }, [profileForm.name]);
   
   // Fetch current user data when component loads
   useEffect(() => {
@@ -299,7 +316,7 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center space-x-4 mb-6">
                       <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                        {profileForm.avatar ? (
+                        {profileForm.avatar && profileForm.avatar.startsWith('http') ? (
                           <img 
                             src={profileForm.avatar} 
                             alt={profileForm.name} 
@@ -308,11 +325,13 @@ export default function SettingsPage() {
                         ) : (
                           <div className="flex items-center justify-center h-full w-full bg-blue-500 text-white text-xl font-medium">
                             {profileForm.name
-                              .split(' ')
-                              .map(part => part.charAt(0))
-                              .slice(0, 2)
-                              .join('')
-                              .toUpperCase()}
+                              ? profileForm.name
+                                  .split(' ')
+                                  .map(part => part.charAt(0))
+                                  .slice(0, 2)
+                                  .join('')
+                                  .toUpperCase()
+                              : 'U'}
                           </div>
                         )}
                       </div>
