@@ -60,6 +60,20 @@ export default function SettingsPage() {
   // Error state
   const [error, setError] = useState('');
   
+  // Avatar upload
+  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
+  
+  // Define some default avatar options (using color placeholders until real avatars are added)
+  const avatarOptions = [
+    '/avatar-placeholder.png',
+    'https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff',
+    'https://ui-avatars.com/api/?name=User&background=27AE60&color=fff',
+    'https://ui-avatars.com/api/?name=User&background=E74C3C&color=fff',
+    'https://ui-avatars.com/api/?name=User&background=F1C40F&color=fff',
+    'https://ui-avatars.com/api/?name=User&background=8E44AD&color=fff',
+    'https://ui-avatars.com/api/?name=User&background=D35400&color=fff',
+  ];
+  
   // Fetch current user data when component loads
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -113,26 +127,40 @@ export default function SettingsPage() {
   // Handle profile form submission
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     
     if (currentUser) {
       try {
-        // In a real app, this would call an API to update the user
-        // For now, we just update the state
+        // Show loading state
+        setIsLoading(true);
+        
+        // Make a copy of the profile form to send to API
+        const profileUpdate = {
+          name: profileForm.name,
+          email: profileForm.email,
+          avatar: profileForm.avatar,
+        };
+        
+        console.log('Settings page: Submitting profile update:', profileUpdate);
+        
+        // Call the API to update the profile
+        const updatedUser = await API.auth.updateProfile(profileUpdate);
+        
+        // Update the current user in state
         dispatch({
           type: ACTIONS.SET_CURRENT_USER,
-          payload: {
-            ...currentUser,
-            name: profileForm.name,
-            email: profileForm.email,
-            avatar: profileForm.avatar as string,
-            role: profileForm.role,
-          }
+          payload: updatedUser
         });
         
+        console.log('Settings page: Profile updated successfully:', updatedUser);
+        
+        // Show success message
         showSuccessNotification('Profile updated successfully');
-      } catch (error) {
-        console.error('Error updating profile:', error);
-        setError('Failed to update profile. Please try again.');
+      } catch (error: any) {
+        console.error('Settings page: Error updating profile:', error);
+        setError(error.message || 'Failed to update profile. Please try again.');
+      } finally {
+        setIsLoading(false);
       }
     }
   };
@@ -186,16 +214,18 @@ export default function SettingsPage() {
     return () => clearTimeout(timer);
   };
   
-  // Avatar upload
-  const handleAvatarUpload = () => {
-    // In a real app, this would open a file upload
-    // For now, we'll just set a new random avatar
-    const randomAvatar = `/avatars/avatar-${Math.floor(Math.random() * 5) + 1}.jpg`;
-    
+  // Handle avatar selection
+  const handleAvatarSelect = (avatarUrl: string) => {
     setProfileForm(prev => ({
       ...prev,
-      avatar: randomAvatar
+      avatar: avatarUrl
     }));
+    setShowAvatarSelector(false);
+  };
+  
+  // Avatar upload dialog
+  const handleAvatarUpload = () => {
+    setShowAvatarSelector(true);
   };
 
   return (
@@ -287,9 +317,46 @@ export default function SettingsPage() {
                         className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center"
                       >
                         <Upload className="h-4 w-4 mr-2" />
-                        Upload Photo
+                        Change Avatar
                       </button>
                     </div>
+                    
+                    {/* Avatar selector dialog */}
+                    {showAvatarSelector && (
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+                          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Select Avatar</h3>
+                          <div className="grid grid-cols-3 gap-4 mb-4">
+                            {avatarOptions.map((avatar, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => handleAvatarSelect(avatar)}
+                                className="p-1 border-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                style={{
+                                  borderColor: profileForm.avatar === avatar ? 'rgb(59, 130, 246)' : 'transparent'
+                                }}
+                              >
+                                <img 
+                                  src={avatar} 
+                                  alt={`Avatar option ${index + 1}`}
+                                  className="w-full aspect-square object-cover rounded-md"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setShowAvatarSelector(false)}
+                              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>

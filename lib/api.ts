@@ -74,6 +74,24 @@ export const authAPI = {
       body: JSON.stringify({ userId, role }),
     });
   },
+
+  // Update user profile
+  updateProfile: async (profileData: { name?: string; email?: string; avatar?: string }): Promise<User> => {
+    return fetchAPI<User>('/user', {
+      method: 'PATCH',
+      body: JSON.stringify(profileData),
+    });
+  },
+
+  // Get user profile
+  getProfile: async (): Promise<User | null> => {
+    try {
+      return await fetchAPI<User>('/user');
+    } catch (error) {
+      console.log('Error getting user profile:', error);
+      return null;
+    }
+  },
 };
 
 // Employee API functions

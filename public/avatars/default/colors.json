@@ -1,0 +1,14 @@
+{
+  "colors": [
+    {"name": "Blue", "code": "0D8ABC"},
+    {"name": "Green", "code": "27AE60"},
+    {"name": "Red", "code": "E74C3C"},
+    {"name": "Yellow", "code": "F1C40F"},
+    {"name": "Purple", "code": "8E44AD"},
+    {"name": "Orange", "code": "D35400"},
+    {"name": "Gray", "code": "7F8C8D"},
+    {"name": "Teal", "code": "16A085"},
+    {"name": "Pink", "code": "E84393"},
+    {"name": "Navy", "code": "2C3E50"}
+  ]
+} 
