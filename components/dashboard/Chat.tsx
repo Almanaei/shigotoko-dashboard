@@ -11,6 +11,7 @@ export default function Chat() {
   const { messages, currentUser, employees } = state;
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState<{[key: string]: boolean}>({});
+  const [simulatingResponse, setSimulatingResponse] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
@@ -51,7 +52,7 @@ export default function Chat() {
   useEffect(() => {
     const interval = setInterval(() => {
       // Randomly have someone start typing
-      if (Math.random() > 0.9 && Object.keys(isTyping).length === 0) {
+      if (Math.random() > 0.9 && Object.keys(isTyping).length === 0 && !simulatingResponse) {
         const randomUser = employees[Math.floor(Math.random() * employees.length)];
         if (randomUser && randomUser.id !== currentUser?.id) {
           setIsTyping(prev => ({ ...prev, [randomUser.id]: true }));
@@ -62,8 +63,8 @@ export default function Chat() {
               const newState = { ...prev };
               delete newState[randomUser.id];
               
-              // 50% chance to actually send a message after typing
-              if (Math.random() > 0.5) {
+              // 70% chance to actually send a message after typing
+              if (Math.random() > 0.3) {
                 const randomMessages = [
                   "Has anyone looked at the Q2 projections yet?",
                   "I just updated the project timeline in the schedule.",
@@ -96,10 +97,73 @@ export default function Chat() {
           }, 2000 + Math.random() * 3000);
         }
       }
-    }, 10000); // Check every 10 seconds
+    }, 7000); // Check more frequently (every 7 seconds)
 
     return () => clearInterval(interval);
-  }, [employees, currentUser, dispatch, isTyping]);
+  }, [employees, currentUser, dispatch, isTyping, simulatingResponse]);
+
+  // Simulate responses to user messages
+  const simulateResponse = () => {
+    if (!currentUser) return;
+    
+    setSimulatingResponse(true);
+    
+    // Choose a random employee to respond
+    const respondingEmployee = employees[Math.floor(Math.random() * employees.length)];
+    if (!respondingEmployee) {
+      setSimulatingResponse(false);
+      return;
+    }
+    
+    // Show typing indicator for 1-3 seconds
+    setIsTyping(prev => ({ ...prev, [respondingEmployee.id]: true }));
+    
+    setTimeout(() => {
+      setIsTyping(prev => {
+        const newState = { ...prev };
+        delete newState[respondingEmployee.id];
+        return newState;
+      });
+      
+      // Choose response based on last message content
+      const lastMessage = messages[messages.length - 1]?.content.toLowerCase() || '';
+      let responseContent = '';
+      
+      if (lastMessage.includes('hello') || lastMessage.includes('hi') || lastMessage.includes('hey')) {
+        responseContent = `Hi there! How's your day going?`;
+      } else if (lastMessage.includes('project') || lastMessage.includes('work') || lastMessage.includes('task')) {
+        responseContent = `I just finished updating the project status. We're on track for the release next week!`;
+      } else if (lastMessage.includes('meeting') || lastMessage.includes('schedule')) {
+        responseContent = `The team meeting is scheduled for 2pm today. I'll send out the agenda shortly.`;
+      } else if (lastMessage.includes('help') || lastMessage.includes('support') || lastMessage.includes('issue')) {
+        responseContent = `What do you need help with? I'm available to assist with any issues you're facing.`;
+      } else {
+        const genericResponses = [
+          "Thanks for the update!",
+          "I'll take a look at this right away.",
+          "Great point. Let's discuss this further in our next meeting.",
+          "I appreciate your input on this matter.",
+          "Let me know if you need any assistance with that."
+        ];
+        responseContent = genericResponses[Math.floor(Math.random() * genericResponses.length)];
+      }
+      
+      const responseMessage = {
+        id: `msg-${Date.now()}`,
+        content: responseContent,
+        sender: respondingEmployee.id,
+        senderName: respondingEmployee.name,
+        timestamp: new Date().toISOString(),
+      };
+      
+      dispatch({
+        type: ACTIONS.ADD_MESSAGE,
+        payload: responseMessage
+      });
+      
+      setSimulatingResponse(false);
+    }, 1000 + Math.random() * 2000);
+  };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,6 +184,11 @@ export default function Chat() {
     });
     
     setNewMessage('');
+    
+    // 80% chance to get a simulated response
+    if (Math.random() > 0.2) {
+      setTimeout(simulateResponse, 500 + Math.random() * 1000);
+    }
   };
 
   // Format message timestamp
@@ -174,7 +243,7 @@ export default function Chat() {
       };
     }
     
-    // Fallback to senderName if available in the message
+    // Fallback to senderName from message or use unknown
     return {
       name: 'Unknown User',
       avatar: '/avatar-placeholder.png',
@@ -191,6 +260,29 @@ export default function Chat() {
       .toUpperCase()
       .substring(0, 2);
   };
+
+  // Group messages by date
+  const groupMessagesByDate = () => {
+    const groups: {date: string, messages: typeof messages}[] = [];
+    
+    messages.forEach(message => {
+      const messageDate = new Date(message.timestamp);
+      const dateString = messageDate.toDateString();
+      
+      // Find existing group or create new one
+      let group = groups.find(g => g.date === dateString);
+      if (!group) {
+        group = { date: dateString, messages: [] };
+        groups.push(group);
+      }
+      
+      group.messages.push(message);
+    });
+    
+    return groups;
+  };
+
+  const messageGroups = groupMessagesByDate();
 
   return (
     <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark flex flex-col h-full animate-slide-in">
@@ -245,68 +337,90 @@ export default function Chat() {
         
         {/* Chat messages */}
         {messages.length > 0 && (
-          <div className="space-y-4">
-            {messages.map((message) => {
-              const senderInfo = getSenderInfo(message.sender);
-              const isCurrentUser = senderInfo.isCurrentUser;
-              
-              return (
-                <div 
-                  key={message.id} 
-                  className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} group`}
-                >
-                  <div className="flex items-end max-w-[80%]">
-                    {/* Avatar for other users' messages */}
-                    {!isCurrentUser && (
-                      <div 
-                        className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2 mb-1 flex-shrink-0 overflow-hidden"
-                        style={{
-                          backgroundColor: message.sender.charCodeAt(0) % 2 === 0 ? '#3b82f6' : 
-                                         message.sender.charCodeAt(0) % 3 === 0 ? '#10b981' : 
-                                         message.sender.charCodeAt(0) % 5 === 0 ? '#8b5cf6' : '#f59e0b'
-                        }}
-                      >
-                        {senderInfo.avatar ? 
-                          <img src={senderInfo.avatar} alt={senderInfo.name} className="w-full h-full object-cover" /> :
-                          getInitials(senderInfo.name)
-                        }
-                      </div>
-                    )}
-                    
-                    {/* Message bubble */}
-                    <div 
-                      className={`${
-                        isCurrentUser 
-                          ? 'bg-blue-500 text-white rounded-tl-2xl rounded-tr-sm'
-                          : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tr-2xl rounded-tl-sm'
-                      } p-3 rounded-bl-2xl rounded-br-2xl shadow-sm`}
-                    >
-                      <div className="flex items-start mb-1">
-                        <span className="font-medium text-sm">
-                          {senderInfo.name}
-                        </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                      <div className={`text-xs opacity-70 mt-1 text-right ${
-                        isCurrentUser ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
-                      }`}>
-                        {formatMessageTime(message.timestamp)}
-                      </div>
-                    </div>
-                    
-                    {/* Avatar for current user's messages */}
-                    {isCurrentUser && (
-                      <div className="h-8 w-8 rounded-full bg-gray-500 dark:bg-gray-600 flex items-center justify-center text-white text-xs ml-2 mb-1 flex-shrink-0 overflow-hidden">
-                        {currentUser?.avatar ? 
-                          <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" /> :
-                          getInitials(currentUser?.name || 'U')
-                        }
-                      </div>
-                    )}
+          <div className="space-y-6">
+            {messageGroups.map((group, groupIndex) => (
+              <div key={group.date} className="space-y-4">
+                {/* Date separator */}
+                <div className="flex items-center justify-center">
+                  <div className="bg-gray-100 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 px-3 py-1 rounded-full">
+                    {new Date(group.date).toLocaleDateString(undefined, { 
+                      weekday: 'long', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}
                   </div>
                 </div>
-              );
-            })}
+                
+                {/* Messages for this date */}
+                {group.messages.map((message, messageIndex) => {
+                  const senderInfo = getSenderInfo(message.sender);
+                  const isCurrentUser = senderInfo.isCurrentUser;
+                  
+                  // Check if we should show the avatar (first message of a group)
+                  const prevMessage = messageIndex > 0 ? group.messages[messageIndex - 1] : null;
+                  const showAvatar = !prevMessage || prevMessage.sender !== message.sender;
+                  
+                  return (
+                    <div 
+                      key={message.id} 
+                      className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} group`}
+                    >
+                      <div className="flex items-end max-w-[80%]">
+                        {/* Avatar for other users' messages */}
+                        {!isCurrentUser && showAvatar && (
+                          <div 
+                            className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2 mb-1 flex-shrink-0 overflow-hidden"
+                            style={{
+                              backgroundColor: message.sender.charCodeAt(0) % 2 === 0 ? '#3b82f6' : 
+                                           message.sender.charCodeAt(0) % 3 === 0 ? '#10b981' : 
+                                           message.sender.charCodeAt(0) % 5 === 0 ? '#8b5cf6' : '#f59e0b'
+                            }}
+                          >
+                            {senderInfo.avatar ? 
+                              <img src={senderInfo.avatar} alt={senderInfo.name} className="w-full h-full object-cover" /> :
+                              getInitials(senderInfo.name)
+                            }
+                          </div>
+                        )}
+                        
+                        {/* Message bubble */}
+                        <div 
+                          className={`${
+                            isCurrentUser 
+                              ? 'bg-blue-500 text-white rounded-tl-2xl rounded-tr-sm'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tr-2xl rounded-tl-sm'
+                          } p-3 rounded-bl-2xl rounded-br-2xl shadow-sm hover:shadow-md transition-shadow`}
+                        >
+                          {showAvatar && (
+                            <div className="flex items-start mb-1">
+                              <span className="font-medium text-sm">
+                                {senderInfo.name}
+                              </span>
+                            </div>
+                          )}
+                          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                          <div className={`text-xs opacity-70 mt-1 text-right ${
+                            isCurrentUser ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
+                          }`}>
+                            {formatMessageTime(message.timestamp)}
+                          </div>
+                        </div>
+                        
+                        {/* Avatar for current user's messages */}
+                        {isCurrentUser && showAvatar && (
+                          <div className="h-8 w-8 rounded-full bg-gray-500 dark:bg-gray-600 flex items-center justify-center text-white text-xs ml-2 mb-1 flex-shrink-0 overflow-hidden">
+                            {currentUser?.avatar ? 
+                              <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" /> :
+                              getInitials(currentUser?.name || 'U')
+                            }
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
             
             {/* Typing indicators */}
             {Object.entries(isTyping).map(([userId, isTyping]) => {
@@ -426,13 +540,17 @@ export default function Chat() {
           <button 
             type="submit"
             className={`inline-flex items-center justify-center p-2 rounded-lg shadow-sm text-white ${
-              newMessage.trim() === ''
+              newMessage.trim() === '' || simulatingResponse
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800'
             }`}
-            disabled={newMessage.trim() === ''}
+            disabled={newMessage.trim() === '' || simulatingResponse}
           >
-            <Send className="h-4 w-4" />
+            {simulatingResponse ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </button>
         </form>
       </div>
