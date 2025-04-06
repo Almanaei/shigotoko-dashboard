@@ -248,6 +248,43 @@ export default function SettingsPage() {
           </div>
         )}
         
+        {/* Avatar selector modal */}
+        {showAvatarSelector && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Select Avatar</h3>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                {avatarOptions.map((avatar, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleAvatarSelect(avatar)}
+                    className="p-1 border-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                      borderColor: profileForm.avatar === avatar ? 'rgb(59, 130, 246)' : 'transparent'
+                    }}
+                  >
+                    <img 
+                      src={avatar} 
+                      alt={`Avatar option ${index + 1}`}
+                      className="w-full aspect-square object-cover rounded-md"
+                    />
+                  </button>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarSelector(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Error notification */}
         {error && (
           <div className="mb-6 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center text-red-600 dark:text-red-400">
