@@ -1,4 +1,5 @@
 // API service for making requests to our backend endpoints
+import { User } from '@/lib/DashboardProvider';
 
 // Base URL for API requests
 const API_BASE_URL = '/api';
@@ -33,31 +34,36 @@ async function fetchAPI<T>(
 // Authentication API functions
 export const authAPI = {
   // Login user
-  login: async (credentials: { email: string; password: string }) => {
-    return fetchAPI('/auth', {
+  login: async (credentials: { email: string; password: string }): Promise<User> => {
+    return fetchAPI<User>('/auth', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
   },
   
   // Register a new user
-  register: async (userData: { name: string; email: string; password: string; role?: string }) => {
-    return fetchAPI('/auth/register', {
+  register: async (userData: { name: string; email: string; password: string; role?: string }): Promise<User> => {
+    return fetchAPI<User>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
   },
   
   // Logout user
-  logout: async () => {
-    return fetchAPI('/auth', {
+  logout: async (): Promise<{ success: boolean }> => {
+    return fetchAPI<{ success: boolean }>('/auth', {
       method: 'DELETE',
     });
   },
   
   // Get current user
-  getCurrentUser: async () => {
-    return fetchAPI('/auth');
+  getCurrentUser: async (): Promise<User | null> => {
+    try {
+      return await fetchAPI<User>('/auth');
+    } catch (error) {
+      console.log('Error getting current user:', error);
+      return null;
+    }
   },
 };
 

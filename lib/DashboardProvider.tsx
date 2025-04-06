@@ -315,11 +315,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         const user = await API.auth.getCurrentUser().catch(() => null);
         
         if (user) {
+          console.log('Retrieved authenticated user:', user);
           dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: user });
           
           // Load other data after authentication
           initializeData(dispatch);
         } else {
+          console.log('No authenticated user found, using mock data');
           // Use mock data for demo if no user is authenticated
           initializeMockData(dispatch);
         }
@@ -475,7 +477,7 @@ function generateMockMessages(): Message[] {
 
 // Mock data initialization
 export function initializeMockData(dispatch: React.Dispatch<Action>) {
-  // Current user mock data
+  // Current user mock data - only use if no real user is logged in
   const mockUser: User = {
     id: 'user-1',
     name: 'Alex Johnson',

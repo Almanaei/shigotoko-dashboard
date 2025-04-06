@@ -131,6 +131,10 @@ export async function GET(request: NextRequest) {
     
     // Return user data
     const { password: _, ...userWithoutPassword } = session.user;
+    
+    // Log the user being returned to verify correct data
+    console.log('Returning user from session:', userWithoutPassword);
+    
     return NextResponse.json(userWithoutPassword);
   } catch (error) {
     console.error('Session error:', error);
