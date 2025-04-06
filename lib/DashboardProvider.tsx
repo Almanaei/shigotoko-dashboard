@@ -135,11 +135,12 @@ export const ACTIONS = {
   ADD_MESSAGE: 'ADD_MESSAGE',
   SET_LOADING: 'SET_LOADING',
   SET_ERROR: 'SET_ERROR',
-};
+} as const;
 
-type DashboardDispatch = (action: Action) => void;
+// Define action types with literal types for better type checking
+type ActionType = typeof ACTIONS[keyof typeof ACTIONS];
 
-// Action types
+// Action types with specific discriminated union
 type Action =
   | { type: typeof ACTIONS.SET_CURRENT_USER; payload: User }
   | { type: typeof ACTIONS.SET_EMPLOYEES; payload: Employee[] }
@@ -166,6 +167,8 @@ type Action =
   | { type: typeof ACTIONS.SET_LOADING; payload: boolean }
   | { type: typeof ACTIONS.SET_ERROR; payload: string | null };
 
+type DashboardDispatch = (action: Action) => void;
+
 // Initial state
 const initialState: DashboardState = {
   currentUser: null,
@@ -187,7 +190,7 @@ const initialState: DashboardState = {
   error: null
 };
 
-// Reducer
+// Type-safe reducer that correctly handles each action type
 const dashboardReducer = (state: DashboardState, action: Action): DashboardState => {
   switch (action.type) {
     case ACTIONS.SET_CURRENT_USER:
@@ -196,15 +199,15 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return { ...state, employees: action.payload };
     case ACTIONS.ADD_EMPLOYEE:
       return { ...state, employees: [...state.employees, action.payload] };
-    case ACTIONS.UPDATE_EMPLOYEE:
+    case ACTIONS.UPDATE_EMPLOYEE: {
+      const { id, employee } = action.payload;
       return {
         ...state,
-        employees: state.employees.map(employee =>
-          employee.id === action.payload.id
-            ? { ...employee, ...action.payload.employee }
-            : employee
+        employees: state.employees.map(emp =>
+          emp.id === id ? { ...emp, ...employee } : emp
         ),
       };
+    }
     case ACTIONS.DELETE_EMPLOYEE:
       return {
         ...state,
@@ -214,15 +217,15 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return { ...state, departments: action.payload };
     case ACTIONS.ADD_DEPARTMENT:
       return { ...state, departments: [...state.departments, action.payload] };
-    case ACTIONS.UPDATE_DEPARTMENT:
+    case ACTIONS.UPDATE_DEPARTMENT: {
+      const { id, department } = action.payload;
       return {
         ...state,
-        departments: state.departments.map(department =>
-          department.id === action.payload.id
-            ? { ...department, ...action.payload.department }
-            : department
+        departments: state.departments.map(dept =>
+          dept.id === id ? { ...dept, ...department } : dept
         ),
       };
+    }
     case ACTIONS.DELETE_DEPARTMENT:
       return {
         ...state,
@@ -232,44 +235,45 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return { ...state, projects: action.payload };
     case ACTIONS.ADD_PROJECT:
       return { ...state, projects: [...state.projects, action.payload] };
-    case ACTIONS.UPDATE_PROJECT:
+    case ACTIONS.UPDATE_PROJECT: {
+      const { id, project } = action.payload;
       return {
         ...state,
-        projects: state.projects.map(project =>
-          project.id === action.payload.id
-            ? { ...project, ...action.payload.project }
-            : project
+        projects: state.projects.map(proj =>
+          proj.id === id ? { ...proj, ...project } : proj
         ),
       };
+    }
     case ACTIONS.DELETE_PROJECT:
       return {
         ...state,
         projects: state.projects.filter(project => project.id !== action.payload),
       };
-    case ACTIONS.ADD_PROJECT_LOG:
-      // Add log to specific project and to global logs
+    case ACTIONS.ADD_PROJECT_LOG: {
+      const newLog = action.payload;
       return {
         ...state,
         projects: state.projects.map(project => 
-          project.id === action.payload.projectId
-            ? { ...project, logs: [...project.logs, action.payload] }
+          project.id === newLog.projectId
+            ? { ...project, logs: [...project.logs, newLog] }
             : project
         ),
-        projectLogs: [...state.projectLogs, action.payload]
+        projectLogs: [...state.projectLogs, newLog]
       };
+    }
     case ACTIONS.SET_TASKS:
       return { ...state, tasks: action.payload };
     case ACTIONS.ADD_TASK:
       return { ...state, tasks: [...state.tasks, action.payload] };
-    case ACTIONS.UPDATE_TASK:
+    case ACTIONS.UPDATE_TASK: {
+      const { id, task } = action.payload;
       return {
         ...state,
-        tasks: state.tasks.map(task =>
-          task.id === action.payload.id
-            ? { ...task, ...action.payload.task }
-            : task
+        tasks: state.tasks.map(t =>
+          t.id === id ? { ...t, ...task } : t
         ),
       };
+    }
     case ACTIONS.DELETE_TASK:
       return {
         ...state,
@@ -359,23 +363,32 @@ export function useDashboard() {
 }
 
 // Initialize data from API
-async function initializeData(dispatch: React.Dispatch<Action>) {
+async function initializeData(dispatch: DashboardDispatch) {
   try {
     // Fetch employees
     const employees = await API.employees.getAll();
-    dispatch({ type: ACTIONS.SET_EMPLOYEES, payload: employees });
+    dispatch({ 
+      type: ACTIONS.SET_EMPLOYEES, 
+      payload: employees as Employee[] 
+    });
     
     // Fetch departments
     const departments = await API.departments.getAll();
-    dispatch({ type: ACTIONS.SET_DEPARTMENTS, payload: departments });
+    dispatch({ 
+      type: ACTIONS.SET_DEPARTMENTS, 
+      payload: departments as Department[] 
+    });
     
     // Fetch projects
     const projects = await API.projects.getAll();
-    dispatch({ type: ACTIONS.SET_PROJECTS, payload: projects });
+    dispatch({ 
+      type: ACTIONS.SET_PROJECTS, 
+      payload: projects as Project[] 
+    });
     
     // Calculate stats
-    const stats = {
-      totalEmployees: employees.length,
+    const stats: Stats = {
+      totalEmployees: (employees as Employee[]).length,
       totalRevenue: '$' + (Math.floor(Math.random() * 100000) + 50000),
       turnoverRate: Math.floor(Math.random() * 10) + '%',
       attendanceRate: (90 + Math.floor(Math.random() * 10)) + '%',
@@ -389,11 +402,17 @@ async function initializeData(dispatch: React.Dispatch<Action>) {
     
     // Mock notifications
     const mockNotifications = generateMockNotifications();
-    dispatch({ type: ACTIONS.SET_NOTIFICATIONS, payload: mockNotifications });
+    dispatch({ 
+      type: ACTIONS.SET_NOTIFICATIONS, 
+      payload: mockNotifications 
+    });
     
     // Mock messages
     const mockMessages = generateMockMessages();
-    dispatch({ type: ACTIONS.SET_MESSAGES, payload: mockMessages });
+    dispatch({ 
+      type: ACTIONS.SET_MESSAGES, 
+      payload: mockMessages 
+    });
     
   } catch (error) {
     console.error('Error initializing data:', error);
@@ -413,34 +432,34 @@ function generateMockNotifications(): Notification[] {
     {
       id: 'notif-1',
       title: 'New Task Assigned',
-      message: 'You have been assigned a new task: Dashboard redesign',
-      type: 'task',
+      description: 'You have been assigned a new task: Dashboard redesign',
+      type: 'alert',
       read: false,
-      timestamp: new Date(Date.now() - 3600000) // 1 hour ago
+      timestamp: new Date(Date.now() - 3600000).toISOString()
     },
     {
       id: 'notif-2',
       title: 'Project Update',
-      message: 'Website project is now 60% complete',
-      type: 'project',
+      description: 'Website project is now 60% complete',
+      type: 'update',
       read: true,
-      timestamp: new Date(Date.now() - 86400000) // 1 day ago
+      timestamp: new Date(Date.now() - 86400000).toISOString()
     },
     {
       id: 'notif-3',
       title: 'Meeting Reminder',
-      message: 'Team meeting in 30 minutes',
-      type: 'reminder',
+      description: 'Team meeting in 30 minutes',
+      type: 'message',
       read: false,
-      timestamp: new Date(Date.now() - 1800000) // 30 minutes ago
+      timestamp: new Date(Date.now() - 1800000).toISOString()
     },
     {
       id: 'notif-4',
       title: 'System Update',
-      message: 'System maintenance scheduled for tonight',
-      type: 'system',
+      description: 'System maintenance scheduled for tonight',
+      type: 'update',
       read: false,
-      timestamp: new Date(Date.now() - 7200000) // 2 hours ago
+      timestamp: new Date(Date.now() - 7200000).toISOString()
     }
   ];
 }
@@ -452,31 +471,31 @@ function generateMockMessages(): Message[] {
       id: 'msg-1',
       content: 'Welcome to the team chat! Feel free to ask any questions.',
       sender: 'Alex Johnson',
-      timestamp: new Date(Date.now() - 3600000) // 1 hour ago
+      timestamp: new Date(Date.now() - 3600000).toISOString() 
     },
     {
       id: 'msg-2',
       content: 'Thanks! I need some help with the onboarding process.',
       sender: 'Sarah Chen',
-      timestamp: new Date(Date.now() - 3000000) // 50 minutes ago
+      timestamp: new Date(Date.now() - 3000000).toISOString() 
     },
     {
       id: 'msg-3',
       content: 'Sure, I can help with that. What specific part of the onboarding process do you need assistance with?',
       sender: 'Alex Johnson',
-      timestamp: new Date(Date.now() - 2700000) // 45 minutes ago
+      timestamp: new Date(Date.now() - 2700000).toISOString() 
     },
     {
       id: 'msg-4',
       content: 'I just added some new design mockups to the shared folder. Can everyone take a look when you get a chance?',
       sender: 'Emily Wang',
-      timestamp: new Date(Date.now() - 1800000) // 30 minutes ago
+      timestamp: new Date(Date.now() - 1800000).toISOString() 
     }
   ];
 }
 
 // Mock data initialization
-export function initializeMockData(dispatch: React.Dispatch<Action>) {
+export function initializeMockData(dispatch: DashboardDispatch) {
   // Current user mock data - only use if no real user is logged in
   const mockUser: User = {
     id: 'user-1',
