@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { AtSign, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import Image from 'next/image';
@@ -13,6 +13,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Remove any existing redirectTo param from URL
+  useEffect(() => {
+    // Clean up the URL if it has redirectTo param
+    if (window.location.search.includes('redirectTo')) {
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  }, []);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -22,7 +31,7 @@ export default function LoginPage() {
     setError(null);
   };
 
-  // Extremely simplified login handler
+  // Simple direct login with fetch and credentials
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -35,31 +44,27 @@ export default function LoginPage() {
       setLoading(true);
       console.log('Login attempt with:', formData.email);
       
-      // Use direct fetch with proper credentials setting
+      // Use fetch with explicit credentials
       const response = await fetch('/api/auth', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),
-        credentials: 'include', // Important for cookies
+        credentials: 'include',
       });
       
       if (response.ok) {
-        console.log('Login successful, redirecting to dashboard');
-        // Hard redirect to dashboard - force page reload to bypass Next.js router
+        console.log('Login successful');
+        // Hard redirect to dashboard using location.replace - completely new page load
         window.location.replace('/');
       } else {
-        let errorMsg = 'Invalid email or password';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.error || errorMsg;
-        } catch (e) {}
-        
-        setError(errorMsg);
+        // Handle error response
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || 'Invalid email or password');
         setLoading(false);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Login error:', err);
       setError('An unexpected error occurred');
       setLoading(false);

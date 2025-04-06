@@ -16,8 +16,8 @@ export function middleware(request: NextRequest) {
   // Check if API request (except auth API)
   const isApiRoute = path.startsWith('/api/') && !path.startsWith('/api/auth');
 
-  // Check if the user is authenticated
-  const sessionToken = request.cookies.get('session_token')?.value;
+  // Check if the user is authenticated - FIXED: use session-token with hyphen to match auth.ts
+  const sessionToken = request.cookies.get('session-token')?.value;
   const isAuthenticated = !!sessionToken;
 
   // If it's an API route, just continue (API routes handle auth internally)
@@ -27,10 +27,7 @@ export function middleware(request: NextRequest) {
 
   // Redirect unauthenticated users to login
   if (!isAuthenticated && !isPublicRoute) {
-    const loginUrl = new URL('/login', request.url);
-    // Add the redirect path as a query parameter
-    loginUrl.searchParams.set('redirectTo', path);
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Redirect authenticated users trying to access login page
