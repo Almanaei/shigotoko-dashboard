@@ -1,33 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { AtSign, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-
-  // Check for existing session cookie on page load
-  useEffect(() => {
-    // Check for session token cookie
-    const hasCookie = document.cookie.split(';').some(c => {
-      return c.trim().startsWith('session-token=');
-    });
-    
-    if (hasCookie) {
-      console.log('Found session cookie, redirecting to dashboard');
-      window.location.href = '/';
-    }
-  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -38,7 +22,7 @@ export default function LoginPage() {
     setError(null);
   };
 
-  // Super simple login approach with a forced page reload
+  // Extremely simplified login handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -49,36 +33,41 @@ export default function LoginPage() {
     
     try {
       setLoading(true);
-      console.log('Attempting login with:', formData.email);
+      console.log('Login attempt with:', formData.email);
       
-      // Direct fetch to API
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-        credentials: 'include'
-      });
+      // Use XMLHttpRequest which handles cookies differently than fetch
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/auth', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.withCredentials = true;
       
-      const data = await response.json();
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log('Login successful, redirecting to dashboard');
+          // Hard redirect to dashboard
+          window.location.href = '/';
+        } else {
+          let errorMsg = 'Invalid email or password';
+          try {
+            const response = JSON.parse(xhr.responseText);
+            errorMsg = response.error || errorMsg;
+          } catch (e) {}
+          
+          setError(errorMsg);
+          setLoading(false);
+        }
+      };
       
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
+      xhr.onerror = function() {
+        setError('Network error occurred');
+        setLoading(false);
+      };
       
-      console.log('Login successful, user data:', data);
-      
-      // Set a flag in localStorage to indicate successful login
-      localStorage.setItem('justLoggedIn', 'true');
-      
-      // Force reload the entire page to dashboard
-      window.location.href = '/';
+      xhr.send(JSON.stringify(formData));
       
     } catch (err: any) {
       console.error('Login error:', err);
-      setError('Invalid email or password. Please try again.');
-    } finally {
+      setError('An unexpected error occurred');
       setLoading(false);
     }
   };
@@ -151,28 +140,6 @@ export default function LoginPage() {
                     className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-900"
                     placeholder="••••••••"
                   />
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <input
-                    id="remember-me"
-                    name="remember-me"
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={() => setRememberMe(!rememberMe)}
-                    className="h-4 w-4 text-blue-600 dark:text-blue-500 border-gray-300 dark:border-gray-700 rounded focus:ring-blue-500"
-                  />
-                  <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                    Remember me
-                  </label>
-                </div>
-                
-                <div className="text-sm">
-                  <Link href="/forgot-password" className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 font-medium">
-                    Forgot your password?
-                  </Link>
                 </div>
               </div>
               

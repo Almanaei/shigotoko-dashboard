@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState } from 'react';
 import { API } from '@/lib/api';
 
 // Types
@@ -308,48 +308,46 @@ const DashboardContext = createContext<{
 // Dashboard provider component
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
+  const [initialized, setInitialized] = useState(false);
 
-  // Load user data on mount
+  // Load user data on mount, but only if we're in a browser
   useEffect(() => {
-    const loadUserData = async () => {
-      try {
-        dispatch({ type: ACTIONS.SET_LOADING, payload: true });
-        
-        console.log('Attempting to load user data...');
-        
-        // Get current user from session
-        const user = await API.auth.getCurrentUser().catch((e) => {
-          console.error('Error getting current user:', e);
-          return null;
-        });
-        
-        if (user) {
-          console.log('Retrieved authenticated user:', JSON.stringify(user));
-          dispatch({ type: ACTIONS.SET_CURRENT_USER, payload: user });
+    if (typeof window !== 'undefined' && !initialized) {
+      const loadUserData = async () => {
+        try {
+          dispatch({ type: ACTIONS.SET_LOADING, payload: true });
           
-          // Load other data after authentication
-          initializeData(dispatch);
-        } else {
-          console.log('No authenticated user found, using mock data');
-          // Use mock data for demo if no user is authenticated
+          console.log('Attempting to load user data...');
+          
+          // Try to get current user from session
+          const currentUser = await API.auth.getCurrentUser();
+          
+          if (currentUser) {
+            dispatch({
+              type: ACTIONS.SET_CURRENT_USER,
+              payload: currentUser
+            });
+            console.log('User data loaded successfully:', currentUser);
+          } else {
+            console.log('No user data found');
+          }
+          
+          // Initialize mock data to populate the dashboard
           initializeMockData(dispatch);
+          
+          dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+          setInitialized(true);
+        } catch (error) {
+          console.error('Error loading user data:', error);
+          dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load user data' });
+          dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+          setInitialized(true);
         }
-      } catch (error) {
-        console.error('Error loading user data:', error);
-        dispatch({ 
-          type: ACTIONS.SET_ERROR, 
-          payload: 'Failed to load user data. Please try again.' 
-        });
-        
-        // Fallback to mock data
-        initializeMockData(dispatch);
-      } finally {
-        dispatch({ type: ACTIONS.SET_LOADING, payload: false });
-      }
-    };
-
-    loadUserData();
-  }, []);
+      };
+      
+      loadUserData();
+    }
+  }, [initialized]);
 
   return (
     <DashboardContext.Provider value={{ state, dispatch }}>
