@@ -317,28 +317,40 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         try {
           dispatch({ type: ACTIONS.SET_LOADING, payload: true });
           
-          console.log('Attempting to load user data...');
+          console.log('DashboardProvider: Attempting to load user data...');
           
           // Try to get current user from session
+          console.log('DashboardProvider: Calling API.auth.getCurrentUser()');
           const currentUser = await API.auth.getCurrentUser();
           
           if (currentUser) {
+            console.log('DashboardProvider: User data loaded successfully:', currentUser);
             dispatch({
               type: ACTIONS.SET_CURRENT_USER,
               payload: currentUser
             });
-            console.log('User data loaded successfully:', currentUser);
           } else {
-            console.log('No user data found');
+            console.log('DashboardProvider: No user data found, API returned null');
+            
+            // Check if there's a session token cookie that might be invalid
+            const hasCookie = document.cookie.split(';').some(c => 
+              c.trim().startsWith('session-token='));
+            
+            if (hasCookie) {
+              console.log('DashboardProvider: Found session-token cookie but API returned no user - cookie may be invalid');
+            } else {
+              console.log('DashboardProvider: No session-token cookie found');
+            }
           }
           
+          console.log('DashboardProvider: Initializing mock data');
           // Initialize mock data to populate the dashboard
           initializeMockData(dispatch);
           
           dispatch({ type: ACTIONS.SET_LOADING, payload: false });
           setInitialized(true);
         } catch (error) {
-          console.error('Error loading user data:', error);
+          console.error('DashboardProvider: Error loading user data:', error);
           dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load user data' });
           dispatch({ type: ACTIONS.SET_LOADING, payload: false });
           setInitialized(true);
@@ -502,9 +514,9 @@ export function initializeMockData(dispatch: DashboardDispatch) {
   // Current user mock data - only use if no real user is logged in
   const mockUser: User = {
     id: 'user-1',
-    name: 'Alex Johnson',
-    email: 'alex@shigotoko.com',
-    avatar: '/avatars/alex.jpg',
+    name: 'Admin User',
+    email: 'admin@shigotoko.com',
+    avatar: '/avatars/admin.jpg',
     role: 'Admin'
   };
 

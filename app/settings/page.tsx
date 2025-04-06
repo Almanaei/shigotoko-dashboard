@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Layout from '@/components/dashboard/Layout';
 import { useDashboard } from '@/lib/DashboardProvider';
 import { ACTIONS } from '@/lib/DashboardProvider';
+import { API } from '@/lib/api';
 import { 
   User, 
   Save, 
@@ -23,12 +24,15 @@ export default function SettingsPage() {
   const { state, dispatch } = useDashboard();
   const { currentUser } = state;
   
+  // Loading state
+  const [isLoading, setIsLoading] = useState(true);
+  
   // Profile form state
   const [profileForm, setProfileForm] = useState({
-    name: currentUser?.name || '',
-    email: currentUser?.email || '',
-    avatar: currentUser?.avatar || '',
-    role: currentUser?.role || '',
+    name: '',
+    email: '',
+    avatar: '',
+    role: '',
   });
   
   // Appearance settings state
@@ -52,9 +56,43 @@ export default function SettingsPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   
-  // Reset form if user data changes
+  // Fetch current user data when component loads
   useEffect(() => {
-    if (currentUser) {
+    const fetchCurrentUser = async () => {
+      setIsLoading(true);
+      try {
+        const userData = await API.auth.getCurrentUser();
+        if (userData) {
+          console.log('Settings page: Retrieved user data from API:', userData);
+          dispatch({
+            type: ACTIONS.SET_CURRENT_USER,
+            payload: userData
+          });
+          
+          // Update form with fresh user data
+          setProfileForm({
+            name: userData.name,
+            email: userData.email,
+            avatar: userData.avatar || '',
+            role: userData.role,
+          });
+        } else {
+          console.log('Settings page: No user data returned from API');
+        }
+      } catch (error) {
+        console.error('Settings page: Error fetching user data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchCurrentUser();
+  }, [dispatch]);
+  
+  // Update form if currentUser changes
+  useEffect(() => {
+    if (currentUser && !isLoading) {
+      console.log('Settings page: Updating form with current user data:', currentUser);
       setProfileForm({
         name: currentUser.name,
         email: currentUser.email,
@@ -62,13 +100,14 @@ export default function SettingsPage() {
         role: currentUser.role,
       });
     }
-  }, [currentUser]);
+  }, [currentUser, isLoading]);
   
   // Handle profile form submission
-  const handleProfileSubmit = (e: React.FormEvent) => {
+  const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (currentUser) {
+      // In a real app, this would call an API to update the user
       dispatch({
         type: ACTIONS.SET_CURRENT_USER,
         payload: {
