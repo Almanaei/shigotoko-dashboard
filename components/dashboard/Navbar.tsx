@@ -110,6 +110,21 @@ export default function Navbar() {
               }
             }
             
+            // Validate avatar before updating state
+            if (profile.avatar) {
+              // Check if it's a valid image format
+              const isValidAvatar = 
+                profile.avatar.startsWith('data:image/') || 
+                profile.avatar.startsWith('http') ||
+                profile.avatar.startsWith('/');
+                
+              if (!isValidAvatar) {
+                console.log('Navbar: Received invalid avatar format, removing it:', 
+                  profile.avatar.substring(0, 20) + '...');
+                profile.avatar = '';
+              }
+            }
+            
             dispatch({
               type: ACTIONS.SET_CURRENT_USER,
               payload: profile
@@ -171,6 +186,20 @@ export default function Navbar() {
       const savedTheme = localStorage.getItem('theme');
       const initialDarkMode = savedTheme === 'dark';
       setIsDarkMode(initialDarkMode);
+    }
+    
+    // Check if we previously had an avatar loading failure
+    if (typeof localStorage !== 'undefined') {
+      const avatarFailed = localStorage.getItem('avatarFailedToLoad');
+      if (avatarFailed === 'true') {
+        console.log('Navbar: Previously failed to load avatar, scheduling a refresh');
+        // Clear the flag
+        localStorage.removeItem('avatarFailedToLoad');
+        // Schedule a refresh after a short delay
+        setTimeout(() => {
+          setAvatarRefreshAttempt(prev => prev + 1);
+        }, 2000);
+      }
     }
     
     // Check for auth_type cookie on component mount
@@ -264,61 +293,9 @@ export default function Navbar() {
   // User avatar renderer function
   const renderUserAvatar = () => {
     if (!currentUser) return null;
-    
-    if (currentUser.avatar) {
-      return (
-        <div className="relative h-8 w-8">
-          <img
-            className="h-8 w-8 rounded-full object-cover border border-gray-200 dark:border-gray-700"
-            src={currentUser.avatar}
-            alt={currentUser.name}
-            onError={(e) => {
-              // If image fails to load, show initials instead and log debug info
-              console.error('Avatar image failed to load:', {
-                src: currentUser.avatar ? currentUser.avatar.substring(0, 50) + '...' : 'undefined',
-                type: currentUser.avatar ? (
-                  currentUser.avatar.startsWith('data:') ? 'data:URL' : 
-                  currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
-                ) : 'undefined',
-                length: currentUser.avatar ? currentUser.avatar.length : 0
-              });
-              
-              e.currentTarget.style.display = 'none';
-              const fallback = document.getElementById('avatar-fallback');
-              if (fallback) fallback.classList.remove('hidden');
-              
-              // Try refreshing the profile after a short delay (only once)
-              if (avatarRefreshAttempt === 0) {
-                setTimeout(() => {
-                  setAvatarRefreshAttempt(1);
-                }, 2000);
-              }
-            }}
-          />
-          <div 
-            id="avatar-fallback"
-            className="hidden absolute inset-0 h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium"
-          >
-            {currentUser.name
-              .split(' ')
-              .map(part => part.charAt(0))
-              .slice(0, 2)
-              .join('')
-              .toUpperCase()}
-          </div>
-          
-          {/* Display avatar error if any, shown only in development */}
-          {process.env.NODE_ENV === 'development' && avatarError && (
-            <div className="absolute top-full mt-1 right-0 text-xs bg-red-100 text-red-600 p-1 rounded whitespace-nowrap">
-              Avatar error: {avatarError}
-            </div>
-          )}
-        </div>
-      );
-    }
-    
-    // Default to initials if no avatar
-    return (
+
+    // Create fallback avatar with initials
+    const renderInitials = () => (
       <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
         {currentUser.name
           .split(' ')
@@ -326,6 +303,74 @@ export default function Navbar() {
           .slice(0, 2)
           .join('')
           .toUpperCase()}
+      </div>
+    );
+    
+    // Check if avatar is valid before trying to render it
+    const isValidAvatar = currentUser.avatar && 
+      (currentUser.avatar.startsWith('data:image/') || 
+       currentUser.avatar.startsWith('http') ||
+       currentUser.avatar.startsWith('/'));
+    
+    // If we don't have a valid avatar, just render the initials
+    if (!isValidAvatar) {
+      return renderInitials();
+    }
+    
+    // If we have a valid avatar, render it with a fallback
+    return (
+      <div className="relative h-8 w-8">
+        <img
+          className="h-8 w-8 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+          src={currentUser.avatar}
+          alt={currentUser.name}
+          onError={(e) => {
+            // If image fails to load, show initials instead and log debug info
+            console.error('Avatar image failed to load:', {
+              src: currentUser.avatar ? currentUser.avatar.substring(0, 50) + '...' : 'undefined',
+              type: currentUser.avatar ? (
+                currentUser.avatar.startsWith('data:') ? 'data:URL' : 
+                currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+              ) : 'undefined',
+              length: currentUser.avatar ? currentUser.avatar.length : 0
+            });
+            
+            // Set a flag that the avatar failed to load
+            localStorage.setItem('avatarFailedToLoad', 'true');
+            
+            // Hide the broken image
+            e.currentTarget.style.display = 'none';
+            
+            // Show the fallback avatar (initials)
+            const fallback = document.getElementById('avatar-fallback');
+            if (fallback) fallback.classList.remove('hidden');
+            
+            // Try refreshing the profile after a short delay (only once)
+            if (avatarRefreshAttempt === 0) {
+              setTimeout(() => {
+                setAvatarRefreshAttempt(1);
+              }, 2000);
+            }
+          }}
+        />
+        <div 
+          id="avatar-fallback"
+          className="hidden absolute inset-0 h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium"
+        >
+          {currentUser.name
+            .split(' ')
+            .map(part => part.charAt(0))
+            .slice(0, 2)
+            .join('')
+            .toUpperCase()}
+        </div>
+        
+        {/* Display avatar error if any, shown only in development */}
+        {process.env.NODE_ENV === 'development' && avatarError && (
+          <div className="absolute top-full mt-1 right-0 text-xs bg-red-100 text-red-600 p-1 rounded whitespace-nowrap">
+            Avatar error: {avatarError}
+          </div>
+        )}
       </div>
     );
   };
@@ -401,6 +446,35 @@ export default function Navbar() {
       </button>
     </div>
   ) : null;
+
+  // Add a useEffect hook to fix missing avatars after initial page load
+  useEffect(() => {
+    // This hook handles recovering avatars in case they're not loaded properly
+    if (currentUser && !currentUser.avatar) {
+      // Check if we have a stored avatar in localStorage that we can use
+      const storedAvatar = localStorage.getItem('userAvatar');
+      const hasStoredAvatarFlag = localStorage.getItem('hasUserAvatar');
+      
+      if (storedAvatar || hasStoredAvatarFlag) {
+        console.log('Navbar: Found avatar in localStorage but missing in currentUser, applying it');
+        
+        // If we have the actual avatar data, use it
+        if (storedAvatar) {
+          dispatch({
+            type: ACTIONS.SET_CURRENT_USER,
+            payload: {
+              ...currentUser,
+              avatar: storedAvatar
+            }
+          });
+        } else {
+          // Otherwise, trigger a refresh to fetch it from the API
+          console.log('Navbar: Has avatar flag is true but no actual avatar data, refreshing profile');
+          setAvatarRefreshAttempt(prev => prev + 1);
+        }
+      }
+    }
+  }, [currentUser, dispatch]);
 
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 px-4 flex items-center justify-between">
