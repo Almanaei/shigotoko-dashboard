@@ -1,6 +1,7 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { createSuccessResponse, withErrorHandling, errors } from '@/lib/api-utils';
+import { cookies } from 'next/headers';
 
 interface Params {
   params: {
@@ -91,7 +92,39 @@ export async function PUT(request: NextRequest, { params }: Params) {
       });
     }
     
-    return createSuccessResponse(updatedEmployee);
+    // Create a proper response with refreshed session cookies
+    const response = NextResponse.json(updatedEmployee);
+    
+    // Get the current employee session token
+    const employeeSessionToken = request.cookies.get('employee-session')?.value;
+    
+    // If we have an employee session, refresh it
+    if (employeeSessionToken) {
+      console.log('Employee API: Refreshing employee session after profile update');
+      
+      response.cookies.set({
+        name: 'employee-session',
+        value: employeeSessionToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+        path: '/',
+      });
+      
+      // Also ensure the auth_type cookie is set
+      response.cookies.set({
+        name: 'auth_type',
+        value: 'employee',
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+        path: '/',
+      });
+    }
+    
+    return response;
   });
 }
 

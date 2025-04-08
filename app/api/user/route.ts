@@ -91,7 +91,21 @@ export async function PATCH(request: NextRequest) {
     // Return the updated user without the password
     const { password, ...userWithoutPassword } = updatedUser;
     
-    return NextResponse.json(userWithoutPassword);
+    // Set a new cookie to extend the session after profile update
+    const response = NextResponse.json(userWithoutPassword);
+    
+    // Update the session cookie to extend its lifetime
+    response.cookies.set({
+      name: 'session-token',
+      value: sessionToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+    
+    return response;
   } catch (error) {
     console.error('Profile update error:', error);
     return NextResponse.json(

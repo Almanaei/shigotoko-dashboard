@@ -370,10 +370,40 @@ export default function SettingsPage() {
           }
           
           updatedUser = await response.json();
+          
+          // After profile update, refresh the authentication session
+          try {
+            console.log('Settings page: Refreshing employee session after profile update');
+            await fetch('/api/auth/employee', {
+              method: 'GET',
+              credentials: 'include'
+            });
+          } catch (sessionError) {
+            console.warn('Settings page: Failed to refresh employee session:', sessionError);
+          }
         } else {
           // Default to standard User API
           console.log('Settings page: Using standard User API for profile update');
           updatedUser = await API.auth.updateProfile(profileUpdate);
+          
+          // After profile update, refresh the user authentication session
+          try {
+            console.log('Settings page: Refreshing user session after profile update');
+            await API.auth.getCurrentUser();
+          } catch (sessionError) {
+            console.warn('Settings page: Failed to refresh user session:', sessionError);
+          }
+        }
+        
+        // Also refresh session cookies in case they were affected by the profile update
+        try {
+          // Visit the diagnostic endpoint to set fresh cookies
+          console.log('Settings page: Refreshing session cookies');
+          await fetch('/api/auth/set-cookies?type=' + (authType || 'user'), {
+            credentials: 'include'
+          });
+        } catch (cookieError) {
+          console.warn('Settings page: Failed to refresh cookies:', cookieError);
         }
         
         // Update the current user in state
@@ -411,6 +441,13 @@ export default function SettingsPage() {
           errorMessage = 'Network error. Please check your connection and try again.';
         } else if (error.message?.includes('timeout')) {
           errorMessage = 'Request timed out. The avatar may be too large.';
+        } else if (error.message?.includes('expired') || error.message?.includes('Unauthorized')) {
+          errorMessage = 'Your session has expired. Refreshing the page to restore your session...';
+          
+          // If session expired, attempt to refresh the session
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
         }
         
         setError(errorMessage);
