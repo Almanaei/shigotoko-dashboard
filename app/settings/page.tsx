@@ -22,6 +22,24 @@ import {
 } from 'lucide-react';
 import { generateAvatarUrl } from '@/lib/helpers';
 
+// Extended user interface to handle both User and Employee properties
+interface ExtendedUser {
+  id: string;
+  name: string;
+  email: string;
+  role?: string;
+  avatar?: string;
+  // Employee specific fields
+  position?: string;
+  departmentId?: string;
+  department?: { id: string; name: string };
+  address?: string;
+  phoneNumber?: string;
+  hireDate?: string;
+  birthday?: string;
+  salary?: number;
+}
+
 export default function SettingsPage() {
   const { state, dispatch } = useDashboard();
   const { currentUser } = state;
@@ -71,9 +89,36 @@ export default function SettingsPage() {
       setError('');
       
       try {
-        const userData = await API.auth.getCurrentUser();
+        // Try to get user data from standard User authentication first
+        let userData = await API.auth.getCurrentUser();
+        
+        // If no user data found, try Employee authentication
+        if (!userData) {
+          console.log('Settings page: No user data from standard auth, trying employee auth...');
+          
+          // Try employee authentication endpoint directly
+          try {
+            const employeeResponse = await fetch('/api/auth/employee', {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include', // Include cookies for authentication
+            });
+            
+            if (employeeResponse.ok) {
+              userData = await employeeResponse.json();
+              console.log('Settings page: Retrieved employee data:', userData);
+            } else {
+              console.log('Settings page: Employee auth failed with status:', employeeResponse.status);
+            }
+          } catch (employeeError) {
+            console.error('Settings page: Error fetching employee data:', employeeError);
+          }
+        }
+        
         if (userData) {
-          console.log('Settings page: Retrieved user data from API:', userData);
+          console.log('Settings page: Retrieved user/employee data from API:', userData);
           dispatch({
             type: ACTIONS.SET_CURRENT_USER,
             payload: userData
@@ -83,11 +128,11 @@ export default function SettingsPage() {
           setProfileForm({
             name: userData.name,
             email: userData.email,
-            role: userData.role,
+            role: userData.role || 'employee', // Default to 'employee' if no role provided
             avatar: userData.avatar || '',
           });
         } else {
-          console.log('Settings page: No user data returned from API');
+          console.log('Settings page: No user/employee data returned from API');
           setError('Could not retrieve user data. Please try again.');
         }
       } catch (error) {
@@ -199,8 +244,46 @@ export default function SettingsPage() {
           }
         }
         
-        // Call the API to update the profile
-        const updatedUser = await API.auth.updateProfile(profileUpdate);
+        // Determine which authentication method to use based on the auth type
+        let updatedUser;
+        const authType = localStorage.getItem('authType');
+        
+        if (authType === 'employee') {
+          console.log('Settings page: Using Employee API for profile update');
+          
+          // Use Employee API endpoint directly
+          const response = await fetch('/api/employees/' + currentUser.id, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: profileUpdate.name,
+              email: profileUpdate.email,
+              avatar: profileUpdate.avatar,
+              // Keep other fields unchanged
+              position: (currentUser as ExtendedUser).position,
+              department: (currentUser as ExtendedUser).departmentId || (currentUser as ExtendedUser).department?.id,
+              address: (currentUser as ExtendedUser).address,
+              phoneNumber: (currentUser as ExtendedUser).phoneNumber,
+              hireDate: (currentUser as ExtendedUser).hireDate,
+              birthday: (currentUser as ExtendedUser).birthday,
+              salary: (currentUser as ExtendedUser).salary,
+            }),
+            credentials: 'include',
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to update employee profile');
+          }
+          
+          updatedUser = await response.json();
+        } else {
+          // Default to standard User API
+          console.log('Settings page: Using standard User API for profile update');
+          updatedUser = await API.auth.updateProfile(profileUpdate);
+        }
         
         // Update the current user in state
         dispatch({
