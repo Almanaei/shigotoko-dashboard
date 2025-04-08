@@ -186,12 +186,31 @@ export async function GET(request: NextRequest) {
     // Session is valid, return employee data (excluding password)
     const { password, ...employeeWithoutPassword } = session.employee;
     
+    // Also update the session expiration in the database
+    await prisma.session.update({
+      where: { id: sessionToken },
+      data: { expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) } // 30 days
+    });
+    
+    console.log('GET /api/auth/employee - Session refreshed in database');
+    
     // Re-set the cookie to extend session lifetime
     const response = NextResponse.json(employeeWithoutPassword);
     response.cookies.set({
       name: 'employee-session',
       value: sessionToken,
       httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+    
+    // Also refresh the auth_type cookie
+    response.cookies.set({
+      name: 'auth_type',
+      value: 'employee',
+      httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 30 * 24 * 60 * 60, // 30 days

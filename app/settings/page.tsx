@@ -82,6 +82,54 @@ export default function SettingsPage() {
   // Error state
   const [error, setError] = useState('');
   
+  // Function to refresh authentication sessions
+  const refreshAuthSession = async () => {
+    try {
+      const authType = localStorage.getItem('authType') || 'user';
+      
+      if (authType === 'employee') {
+        // Refresh employee session
+        await fetch('/api/auth/employee', {
+          method: 'GET',
+          credentials: 'include'
+        });
+      } else {
+        // Refresh user session
+        await API.auth.getCurrentUser();
+      }
+      
+      // Also refresh cookies
+      await fetch('/api/auth/set-cookies?type=' + authType, {
+        credentials: 'include'
+      });
+      
+      console.log('Settings page: Session refreshed for', authType);
+      return true;
+    } catch (error) {
+      console.error('Settings page: Error refreshing session:', error);
+      return false;
+    }
+  };
+
+  // Refresh session periodically to prevent expiration
+  useEffect(() => {
+    // Skip in iframe
+    if (typeof window !== 'undefined' && window.top !== window.self) {
+      return;
+    }
+    
+    // Initial refresh
+    refreshAuthSession();
+    
+    // Set up periodic refresh (every 10 minutes)
+    const refreshInterval = setInterval(() => {
+      console.log('Settings page: Performing periodic session refresh');
+      refreshAuthSession();
+    }, 10 * 60 * 1000); // 10 minutes
+    
+    return () => clearInterval(refreshInterval);
+  }, []);
+  
   // Fetch current user data when component loads
   useEffect(() => {
     // Skip if we're in an iframe to prevent double loading
@@ -339,6 +387,9 @@ export default function SettingsPage() {
         let updatedUser;
         const authType = localStorage.getItem('authType');
         
+        // Pre-emptively refresh the session before attempting the update
+        await refreshAuthSession();
+        
         if (authType === 'employee') {
           console.log('Settings page: Using Employee API for profile update');
           
@@ -370,41 +421,14 @@ export default function SettingsPage() {
           }
           
           updatedUser = await response.json();
-          
-          // After profile update, refresh the authentication session
-          try {
-            console.log('Settings page: Refreshing employee session after profile update');
-            await fetch('/api/auth/employee', {
-              method: 'GET',
-              credentials: 'include'
-            });
-          } catch (sessionError) {
-            console.warn('Settings page: Failed to refresh employee session:', sessionError);
-          }
         } else {
           // Default to standard User API
           console.log('Settings page: Using standard User API for profile update');
           updatedUser = await API.auth.updateProfile(profileUpdate);
-          
-          // After profile update, refresh the user authentication session
-          try {
-            console.log('Settings page: Refreshing user session after profile update');
-            await API.auth.getCurrentUser();
-          } catch (sessionError) {
-            console.warn('Settings page: Failed to refresh user session:', sessionError);
-          }
         }
         
-        // Also refresh session cookies in case they were affected by the profile update
-        try {
-          // Visit the diagnostic endpoint to set fresh cookies
-          console.log('Settings page: Refreshing session cookies');
-          await fetch('/api/auth/set-cookies?type=' + (authType || 'user'), {
-            credentials: 'include'
-          });
-        } catch (cookieError) {
-          console.warn('Settings page: Failed to refresh cookies:', cookieError);
-        }
+        // Refresh the session again after the update to ensure we maintain authentication
+        await refreshAuthSession();
         
         // Update the current user in state
         dispatch({

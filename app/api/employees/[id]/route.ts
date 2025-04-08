@@ -93,7 +93,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
     
     // Create a proper response with refreshed session cookies
-    const response = NextResponse.json(updatedEmployee);
+    // If employee has password, exclude it from the response
+    let responseData = updatedEmployee;
+    if ('password' in updatedEmployee) {
+      const { password, ...employeeWithoutPassword } = updatedEmployee as any;
+      responseData = employeeWithoutPassword;
+    }
+    
+    const response = NextResponse.json(responseData);
     
     // Get the current employee session token
     const employeeSessionToken = request.cookies.get('employee-session')?.value;
@@ -102,9 +109,51 @@ export async function PUT(request: NextRequest, { params }: Params) {
     if (employeeSessionToken) {
       console.log('Employee API: Refreshing employee session after profile update');
       
+      // First attempt to find the current session to verify it's still valid
+      const session = await prisma.session.findFirst({
+        where: { 
+          id: employeeSessionToken,
+          // Check if this is an employee session by looking for non-null employeeId
+          // Use a type assertion since Prisma doesn't recognize this in the type
+          // @ts-ignore - employeeId exists in the Session model but isn't in the types
+          employeeId: { not: null }
+        }
+      });
+      
+      // If session not found or expired, create a new one
+      let effectiveToken = employeeSessionToken;
+      if (!session || session.expires < new Date()) {
+        console.log('Employee API: Session expired or not found, creating new session');
+        
+        // Delete any existing session with this ID
+        if (session) {
+          await prisma.session.delete({ where: { id: employeeSessionToken } });
+        }
+        
+        // Create a new session
+        const newSession = await prisma.session.create({
+          data: {
+            id: employeeSessionToken, // Reuse the same token ID
+            // @ts-ignore - employeeId exists in the Session model but isn't in the types
+            employeeId: id,
+            expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+          }
+        });
+        
+        effectiveToken = newSession.id;
+        console.log('Employee API: Created new session with token:', effectiveToken.substring(0, 8) + '...');
+      } else {
+        // Update the expiration date of the existing session
+        await prisma.session.update({
+          where: { id: employeeSessionToken },
+          data: { expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
+        });
+        console.log('Employee API: Extended existing session expiration');
+      }
+      
       response.cookies.set({
         name: 'employee-session',
-        value: employeeSessionToken,
+        value: effectiveToken,
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',

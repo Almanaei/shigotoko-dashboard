@@ -94,6 +94,20 @@ function preserveAuthCookies(response: NextResponse, sessionToken?: string, empl
       path: '/',
       domain: process.env.NODE_ENV === 'production' ? process.env.DOMAIN : undefined,
     });
+    
+    // Set auth_type cookie to 'user' for client detection
+    response.cookies.set({
+      name: 'auth_type',
+      value: 'user',
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+    
+    // Clear any employee session cookies to avoid conflicts
+    response.cookies.delete('employee-session');
   }
   
   if (employeeSessionToken) {
@@ -117,6 +131,10 @@ function preserveAuthCookies(response: NextResponse, sessionToken?: string, empl
       maxAge: 30 * 24 * 60 * 60, // 30 days
       path: '/',
     });
+    
+    // Also clear any possible user session cookies to avoid conflicts
+    response.cookies.delete('session-token');
+    response.cookies.delete('session_token');
   }
 }
 
