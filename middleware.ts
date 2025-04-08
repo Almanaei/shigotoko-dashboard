@@ -8,66 +8,81 @@ export function middleware(request: NextRequest) {
   
   console.log('Middleware: Processing request for path:', path);
   
-  // Define paths that don't require authentication
-  const isPublicPath = path === '/login' || path === '/register';
-  
-  // Define authenticated app routes that should be protected
-  const isAppRoute = 
-    path === '/' || 
-    path === '/settings' || 
-    path === '/profile' || 
-    path.startsWith('/employees') || 
-    path.startsWith('/departments') || 
-    path.startsWith('/projects') || 
-    path.startsWith('/documents');
-  
-  // Don't apply auth protection to API routes - API routes handle their own auth
-  if (path.startsWith('/api/')) {
-    console.log('Middleware: API route, skipping auth check');
-    return NextResponse.next();
-  }
-  
-  // Check for employee session token too
+  // Check authentication status
   const sessionToken = 
     request.cookies.get('session-token')?.value || 
     request.cookies.get('session_token')?.value;
   
   const employeeSessionToken = request.cookies.get('employee-session')?.value;
-  
   const isAuthenticated = !!sessionToken || !!employeeSessionToken;
   
+  // Debug info
+  console.log('Middleware: isAuthenticated:', isAuthenticated);
   console.log('Middleware: sessionToken exists:', !!sessionToken);
+  console.log('Middleware: employeeSessionToken exists:', !!employeeSessionToken);
+  
+  const allCookies = request.cookies.getAll().map(c => c.name);
+  console.log('Middleware: All cookies:', allCookies);
+  
   if (sessionToken) {
     console.log('Middleware: sessionToken first 8 chars:', sessionToken.substring(0, 8) + '...');
-    // Determine which format was found
-    const format = request.cookies.get('session-token') ? 'hyphen' : 'underscore';
-    console.log('Middleware: Using session token format:', format);
-  } else if (employeeSessionToken) {
-    console.log('Middleware: employeeSessionToken exists:', !!employeeSessionToken);
+  }
+  
+  if (employeeSessionToken) {
     console.log('Middleware: employeeSessionToken first 8 chars:', employeeSessionToken.substring(0, 8) + '...');
-  } else {
-    console.log('Middleware: No session token found in cookies');
-    console.log('Middleware: All cookies:', request.cookies.getAll().map(c => c.name));
   }
   
-  // If the request is for the login or register page and the user is authenticated,
-  // redirect them to the dashboard
-  if (isPublicPath && isAuthenticated) {
-    console.log('Middleware: User is authenticated and trying to access public path. Redirecting to dashboard.');
-    return NextResponse.redirect(new URL('/', request.url));
+  // Skip middleware for API routes
+  if (path.startsWith('/api/')) {
+    console.log('Middleware: API route, skipping auth check');
+    return NextResponse.next();
   }
   
-  // If the request is for an app route and the user is not authenticated,
-  // redirect them to the login page
-  if (isAppRoute && !isAuthenticated) {
-    console.log('Middleware: User is not authenticated and trying to access protected path. Redirecting to login.');
+  // VERY SPECIFIC REDIRECTION RULES
+  
+  // Rule 1: Non-authenticated users can only access login and register
+  if (!isAuthenticated) {
+    // Allow access to public paths
+    if (path === '/login' || path === '/register') {
+      console.log('Middleware: Non-authenticated user accessing public path, allowed');
+      return NextResponse.next();
+    }
+    
+    // Redirect to login for any other path
+    console.log('Middleware: Non-authenticated user accessing protected path, redirecting to login');
     return NextResponse.redirect(new URL('/login', request.url));
   }
   
-  console.log('Middleware: Request is allowed to proceed normally');
-  const response = NextResponse.next();
+  // Rule 2: Authenticated users trying to access login/register should go to dashboard
+  if (isAuthenticated && (path === '/login' || path === '/register')) {
+    console.log('Middleware: Authenticated user accessing login/register, redirecting to dashboard');
+    return NextResponse.redirect(new URL('/', request.url));
+  }
   
-  // Preserve the authentication cookies on all responses
+  // Rule 3: For settings page specifically, allow access if authenticated
+  if (path === '/settings' && isAuthenticated) {
+    console.log('Middleware: Authenticated user accessing settings page, explicitly allowed');
+    // Continue with the request
+    const response = NextResponse.next();
+    preserveAuthCookies(response, sessionToken, employeeSessionToken);
+    return response;
+  }
+  
+  // Rule 4: For all other paths, allow if authenticated
+  if (isAuthenticated) {
+    console.log('Middleware: Authenticated user accessing path:', path, '- allowed');
+    const response = NextResponse.next();
+    preserveAuthCookies(response, sessionToken, employeeSessionToken);
+    return response;
+  }
+  
+  // Should not reach here, but just in case
+  console.log('Middleware: Unexpected path through middleware logic for:', path);
+  return NextResponse.next();
+}
+
+// Helper function to preserve authentication cookies
+function preserveAuthCookies(response: NextResponse, sessionToken?: string, employeeSessionToken?: string) {
   if (sessionToken) {
     response.cookies.set({
       name: 'session-token',
@@ -103,8 +118,6 @@ export function middleware(request: NextRequest) {
       path: '/',
     });
   }
-  
-  return response;
 }
 
 // Configure the middleware to run on specific paths
