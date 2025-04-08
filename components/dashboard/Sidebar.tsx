@@ -43,7 +43,7 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
       console.log('Clearing cookies...');
       // Handle both cookie formats (with hyphen and underscore)
       document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       
       console.log('Redirecting to login page...');
       // Force a complete page refresh when redirecting
@@ -53,7 +53,7 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
       
       // If API call fails, still attempt to clear cookies and redirect
       document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       window.location.replace('/login');
     }
   };

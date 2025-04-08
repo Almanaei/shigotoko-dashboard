@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createSuccessResponse, withErrorHandling, errors } from '@/lib/api-utils';
 
 // GET all employees
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const departmentId = searchParams.get('departmentId');
-  
-  try {
+  return withErrorHandling(async () => {
+    const searchParams = request.nextUrl.searchParams;
+    const departmentId = searchParams.get('departmentId');
+    
     const whereClause = departmentId ? { departmentId } : {};
     
     const employees = await prisma.employee.findMany({
@@ -16,21 +17,24 @@ export async function GET(request: NextRequest) {
       },
     });
     
-    return NextResponse.json(employees);
-  } catch (error) {
-    console.error('Error fetching employees:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch employees' },
-      { status: 500 }
-    );
-  }
+    return createSuccessResponse(employees);
+  });
 }
 
 // POST a new employee
 export async function POST(request: NextRequest) {
-  try {
+  return withErrorHandling(async () => {
     const body = await request.json();
     
+    // Validate required fields
+    if (!body.name || !body.position || !body.departmentId || !body.email || !body.joinDate) {
+      return errors.badRequest('Missing required fields', {
+        required: ['name', 'position', 'departmentId', 'email', 'joinDate'],
+        provided: Object.keys(body)
+      });
+    }
+    
+    // Create the employee
     const newEmployee = await prisma.employee.create({
       data: {
         name: body.name,
@@ -58,12 +62,6 @@ export async function POST(request: NextRequest) {
       }
     });
     
-    return NextResponse.json(newEmployee, { status: 201 });
-  } catch (error) {
-    console.error('Error creating employee:', error);
-    return NextResponse.json(
-      { error: 'Failed to create employee', details: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
-    );
-  }
+    return createSuccessResponse(newEmployee, 201);
+  });
 } 

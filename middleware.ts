@@ -17,16 +17,39 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
   
-  // Check if user is authenticated
-  const sessionToken = request.cookies.get('session-token')?.value;
+  // Check if user is authenticated - look for both hyphen and underscore formats
+  const sessionToken = 
+    request.cookies.get('session-token')?.value || 
+    request.cookies.get('session_token')?.value;
   
   console.log('Middleware: sessionToken exists:', !!sessionToken);
+  if (sessionToken) {
+    console.log('Middleware: sessionToken first 8 chars:', sessionToken.substring(0, 8) + '...');
+    // Determine which format was found
+    const format = request.cookies.get('session-token') ? 'hyphen' : 'underscore';
+    console.log('Middleware: Using session token format:', format);
+  } else {
+    console.log('Middleware: No session token found in cookies');
+    console.log('Middleware: All cookies:', request.cookies.getAll().map(c => c.name));
+  }
   
   // If the request is for the login or register page and the user is authenticated,
   // redirect them to the dashboard
   if (isPublicPath && sessionToken) {
     console.log('Middleware: User has session token and is trying to access public path. Redirecting to dashboard.');
-    return NextResponse.redirect(new URL('/', request.url));
+    const response = NextResponse.redirect(new URL('/', request.url));
+    // Preserve the session token
+    response.cookies.set({
+      name: 'session-token',
+      value: sessionToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+      domain: process.env.NODE_ENV === 'production' ? process.env.DOMAIN : undefined,
+    });
+    return response;
   }
   
   // If the request is not for a public path and the user is not authenticated,
@@ -37,7 +60,23 @@ export function middleware(request: NextRequest) {
   }
   
   console.log('Middleware: Request is allowed to proceed normally');
-  return NextResponse.next();
+  const response = NextResponse.next();
+  
+  // Preserve the session token on all responses
+  if (sessionToken) {
+    response.cookies.set({
+      name: 'session-token',
+      value: sessionToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+      domain: process.env.NODE_ENV === 'production' ? process.env.DOMAIN : undefined,
+    });
+  }
+  
+  return response;
 }
 
 // Configure the middleware to run on specific paths
@@ -48,9 +87,9 @@ export const config = {
      * Match all request paths except for the ones starting with:
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - public folder files (e.g. /images, /fonts, /icons)
-     * - favicon.ico, robots.txt (common static files)
+     * - favicon.ico (favicon file)
+     * - public folder
      */
-    '/((?!_next/static|_next/image|images|favicon.ico|robots.txt|.*\\.png$|.*\\.jpg$|.*\\.svg$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }; 

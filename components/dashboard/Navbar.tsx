@@ -19,6 +19,13 @@ export default function Navbar() {
   // Debug logging
   useEffect(() => {
     console.log('Current user in Navbar:', currentUser);
+    if (currentUser?.avatar) {
+      console.log('Avatar type:', 
+        currentUser.avatar.startsWith('data:') ? 'data:URL' : 
+        currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other',
+        'Length:', currentUser.avatar.length
+      );
+    }
   }, [currentUser]);
   
   // Safely try to use ThemeProvider
@@ -68,7 +75,32 @@ export default function Navbar() {
     try {
       // Use the API to properly logout - this will handle the server-side session deletion
       console.log('Logging out via API...');
-      await API.auth.logout();
+      
+      // Try both User and Employee logout endpoints
+      try {
+        await API.auth.logout();
+        console.log('User logout successful');
+      } catch (userLogoutError) {
+        console.log('User logout failed:', userLogoutError);
+      }
+      
+      // Try Employee logout endpoint
+      try {
+        const response = await fetch('/api/auth/employee', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          console.log('Employee logout successful');
+        } else {
+          console.log('Employee logout failed with status:', response.status);
+        }
+      } catch (employeeLogoutError) {
+        console.log('Employee logout failed:', employeeLogoutError);
+      }
       
       // Additionally clear cookies on the client side
       console.log('Clearing cookies...');
@@ -258,35 +290,14 @@ export default function Navbar() {
           </div>
         )}
         
-        {/* User avatar and dropdown */}
-        {currentUser && (
-          <div className="flex items-center gap-2">
-            <div className="hidden md:block">
+        {/* User dropdown */}
+        <div className="relative ml-3 flex items-center">
+          {/* Display role next to avatar */}
+          {currentUser && (
+            <div className="hidden md:block mr-2">
               <div className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</div>
             </div>
-            <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm overflow-hidden">
-              {currentUser.avatar && currentUser.avatar.startsWith('http') ? (
-                <img 
-                  src={currentUser.avatar} 
-                  alt={currentUser.name} 
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span>
-                  {currentUser.name
-                    .split(' ')
-                    .map(part => part.charAt(0))
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase()}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* User dropdown */}
-        <div className="relative ml-3">
+          )}
           <div>
             <button
               onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -296,7 +307,7 @@ export default function Navbar() {
               aria-haspopup="true"
             >
               <span className="sr-only">Open user menu</span>
-              {currentUser?.avatar && currentUser.avatar.startsWith('http') ? (
+              {currentUser?.avatar && (currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('data:')) ? (
                 <img
                   className="h-8 w-8 rounded-full object-cover"
                   src={currentUser.avatar}

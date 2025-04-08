@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from '@/components/dashboard/Layout';
 import { useDashboard } from '@/lib/DashboardProvider';
 import { ACTIONS } from '@/lib/DashboardProvider';
@@ -37,19 +37,8 @@ export default function SettingsPage() {
     avatar: '',
   });
   
-  // Avatar upload state
-  const [showAvatarSelector, setShowAvatarSelector] = useState(false);
-  
-  // Define avatar options
-  const avatarOptions = [
-    '/avatar-placeholder.png',
-    'https://ui-avatars.com/api/?name=RW&background=E91E63&color=fff&size=256&bold=true',
-    'https://ui-avatars.com/api/?name=AL&background=0D8ABC&color=fff&size=256&bold=true',
-    'https://ui-avatars.com/api/?name=SA&background=27AE60&color=fff&size=256&bold=true',
-    'https://ui-avatars.com/api/?name=PD&background=F1C40F&color=fff&size=256&bold=true',
-    'https://ui-avatars.com/api/?name=TG&background=8E44AD&color=fff&size=256&bold=true',
-    'https://ui-avatars.com/api/?name=JM&background=D35400&color=fff&size=256&bold=true'
-  ];
+  // File input reference
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Appearance settings state
   const [darkMode, setDarkMode] = useState(() => {
@@ -135,14 +124,80 @@ export default function SettingsPage() {
         // Show loading state
         setIsLoading(true);
         
-        // Make a copy of the profile form to send to API
-        const profileUpdate = {
+        // Create API-compatible object structure
+        const profileUpdate: Record<string, string> = {
           name: profileForm.name,
           email: profileForm.email,
-          avatar: profileForm.avatar,
         };
         
-        console.log('Settings page: Submitting profile update:', profileUpdate);
+        // Only add avatar if it exists and hasn't been cleared
+        if (profileForm.avatar && 
+            (profileForm.avatar.startsWith('data:') || 
+             profileForm.avatar.startsWith('http'))) {
+          profileUpdate.avatar = profileForm.avatar;
+        }
+        
+        // Log what we're sending
+        console.log('Settings page: Submitting profile update:', {
+          name: profileUpdate.name,
+          email: profileUpdate.email,
+          avatarExists: 'avatar' in profileUpdate,
+          avatarType: profileUpdate.avatar ? (
+            profileUpdate.avatar.startsWith('data:') ? 'data:URL' : 
+            profileUpdate.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+          ) : 'None',
+          avatarLength: profileUpdate.avatar ? profileUpdate.avatar.length : 0
+        });
+        
+        // Check if avatar is data URL and potentially too large
+        if (profileUpdate.avatar?.startsWith('data:image/') && profileUpdate.avatar.length > 500000) {
+          console.log('Avatar data URL is large, compressing further...');
+          
+          // Further compress large data URLs
+          try {
+            const img = new Image();
+            await new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = reject;
+              img.src = profileUpdate.avatar;
+            });
+            
+            const canvas = document.createElement('canvas');
+            const MAX_SIZE = 200; // Even smaller for API compatibility
+            let width = img.width;
+            let height = img.height;
+            
+            // Maintain aspect ratio but with stricter size limit
+            if (width > height) {
+              if (width > MAX_SIZE) {
+                height *= MAX_SIZE / width;
+                width = MAX_SIZE;
+              }
+            } else {
+              if (height > MAX_SIZE) {
+                width *= MAX_SIZE / height;
+                height = MAX_SIZE;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            
+            // Use even lower quality for API transmission
+            profileUpdate.avatar = canvas.toDataURL('image/jpeg', 0.6);
+            
+            console.log('Avatar compressed for API:', {
+              originalLength: profileForm.avatar.length,
+              compressedLength: profileUpdate.avatar.length,
+              reduction: `${((1 - profileUpdate.avatar.length / profileForm.avatar.length) * 100).toFixed(1)}%`
+            });
+          } catch (err) {
+            console.error('Error compressing avatar:', err);
+            // Continue with original avatar if compression fails
+          }
+        }
         
         // Call the API to update the profile
         const updatedUser = await API.auth.updateProfile(profileUpdate);
@@ -153,13 +208,38 @@ export default function SettingsPage() {
           payload: updatedUser
         });
         
-        console.log('Settings page: Profile updated successfully:', updatedUser);
+        console.log('Settings page: Profile updated successfully:', {
+          name: updatedUser.name,
+          avatarExists: !!updatedUser.avatar,
+          avatarType: updatedUser.avatar ? (
+            updatedUser.avatar.startsWith('data:') ? 'data:URL' : 
+            updatedUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+          ) : 'None',
+          avatarLength: updatedUser.avatar ? updatedUser.avatar.length : 0
+        });
         
         // Show success message
         showSuccessNotification('Profile updated successfully');
       } catch (error: any) {
         console.error('Settings page: Error updating profile:', error);
-        setError(error.message || 'Failed to update profile. Please try again.');
+        
+        // Provide more detailed error message
+        let errorMessage = 'Failed to update profile. Please try again.';
+        
+        if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        // Check for specific error types
+        if (error.name === 'SyntaxError') {
+          errorMessage = 'Invalid response from server. The avatar may be too large.';
+        } else if (error.message?.includes('NetworkError')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message?.includes('timeout')) {
+          errorMessage = 'Request timed out. The avatar may be too large.';
+        }
+        
+        setError(errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -215,18 +295,81 @@ export default function SettingsPage() {
     return () => clearTimeout(timer);
   };
 
-  // Handle avatar selection
-  const handleAvatarSelect = (avatarUrl: string) => {
-    setProfileForm(prev => ({
-      ...prev,
-      avatar: avatarUrl
-    }));
-    setShowAvatarSelector(false);
+  // Handle avatar selection - now just a simple handler for file input click
+  const handleAvatarUpload = () => {
+    // Directly trigger file input click instead of showing a modal with options
+    fileInputRef.current?.click();
   };
   
-  // Avatar upload dialog
-  const handleAvatarUpload = () => {
-    setShowAvatarSelector(true);
+  // Handle file selection for avatar upload
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Check file type
+    if (!file.type.match('image.*')) {
+      setError('Please select an image file (JPEG, PNG, etc.)');
+      return;
+    }
+    
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size should be less than 5MB');
+      return;
+    }
+    
+    // Resize and compress the image
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        // Create canvas for resizing
+        const canvas = document.createElement('canvas');
+        
+        // Calculate new dimensions (max 256x256)
+        const MAX_WIDTH = 256;
+        const MAX_HEIGHT = 256;
+        let width = img.width;
+        let height = img.height;
+        
+        // Maintain aspect ratio
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        
+        // Set canvas dimensions and draw the resized image
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        // Convert to data URL with reduced quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Update profile form with resized image
+        setProfileForm(prev => ({
+          ...prev,
+          avatar: dataUrl
+        }));
+        
+        console.log('Image resized and compressed:', {
+          originalSize: file.size,
+          resizedSize: dataUrl.length * 0.75, // Approximate size in bytes
+          dimensions: `${width}x${height}`
+        });
+      };
+      
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -248,42 +391,14 @@ export default function SettingsPage() {
           </div>
         )}
         
-        {/* Avatar selector modal */}
-        {showAvatarSelector && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Select Avatar</h3>
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                {avatarOptions.map((avatar, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => handleAvatarSelect(avatar)}
-                    className="p-1 border-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    style={{
-                      borderColor: profileForm.avatar === avatar ? 'rgb(59, 130, 246)' : 'transparent'
-                    }}
-                  >
-                    <img 
-                      src={avatar} 
-                      alt={`Avatar option ${index + 1}`}
-                      className="w-full aspect-square object-cover rounded-md"
-                    />
-                  </button>
-                ))}
-              </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAvatarSelector(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Hidden file input for avatar upload */}
+        <input 
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          accept="image/*"
+          className="hidden"
+        />
         
         {/* Error notification */}
         {error && (
@@ -337,7 +452,7 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <div className="flex items-center space-x-4 mb-6">
                       <div className="w-16 h-16 rounded-full overflow-hidden">
-                        {profileForm.avatar && profileForm.avatar.startsWith('http') ? (
+                        {profileForm.avatar && (profileForm.avatar.startsWith('http') || profileForm.avatar.startsWith('data:')) ? (
                           <img 
                             src={profileForm.avatar} 
                             alt={profileForm.name} 
@@ -380,7 +495,7 @@ export default function SettingsPage() {
                           className="px-3 py-1 border border-gray-300 dark:border-gray-700 rounded-md text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center w-fit"
                         >
                           <Upload className="h-3 w-3 mr-1" />
-                          Change Avatar
+                          Upload Image
                         </button>
                       </div>
                     </div>

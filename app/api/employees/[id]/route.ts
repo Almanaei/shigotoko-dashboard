@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import prisma from '@/lib/prisma';
+import { createSuccessResponse, withErrorHandling, errors } from '@/lib/api-utils';
 
 interface Params {
   params: {
@@ -11,7 +12,7 @@ interface Params {
 export async function GET(request: NextRequest, { params }: Params) {
   const id = params.id;
   
-  try {
+  return withErrorHandling(async () => {
     const employee = await prisma.employee.findUnique({
       where: { id },
       include: {
@@ -20,27 +21,18 @@ export async function GET(request: NextRequest, { params }: Params) {
     });
     
     if (!employee) {
-      return NextResponse.json(
-        { error: 'Employee not found' },
-        { status: 404 }
-      );
+      return errors.notFound('Employee', id);
     }
     
-    return NextResponse.json(employee);
-  } catch (error) {
-    console.error(`Error fetching employee with ID ${id}:`, error);
-    return NextResponse.json(
-      { error: 'Failed to fetch employee' },
-      { status: 500 }
-    );
-  }
+    return createSuccessResponse(employee);
+  });
 }
 
 // UPDATE an employee
 export async function PUT(request: NextRequest, { params }: Params) {
   const id = params.id;
   
-  try {
+  return withErrorHandling(async () => {
     const body = await request.json();
     
     // Check if employee exists
@@ -50,10 +42,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     });
     
     if (!existingEmployee) {
-      return NextResponse.json(
-        { error: 'Employee not found' },
-        { status: 404 }
-      );
+      return errors.notFound('Employee', id);
     }
     
     // Check if department is being changed
@@ -102,31 +91,22 @@ export async function PUT(request: NextRequest, { params }: Params) {
       });
     }
     
-    return NextResponse.json(updatedEmployee);
-  } catch (error) {
-    console.error(`Error updating employee with ID ${id}:`, error);
-    return NextResponse.json(
-      { error: 'Failed to update employee', details: error instanceof Error ? error.message : String(error) },
-      { status: 500 }
-    );
-  }
+    return createSuccessResponse(updatedEmployee);
+  });
 }
 
 // DELETE an employee
 export async function DELETE(request: NextRequest, { params }: Params) {
   const id = params.id;
   
-  try {
+  return withErrorHandling(async () => {
     // Check if employee exists and get department ID
     const employee = await prisma.employee.findUnique({
       where: { id }
     });
     
     if (!employee) {
-      return NextResponse.json(
-        { error: 'Employee not found' },
-        { status: 404 }
-      );
+      return errors.notFound('Employee', id);
     }
     
     // Delete the employee
@@ -144,15 +124,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       }
     });
     
-    return NextResponse.json(
-      { message: 'Employee deleted successfully' },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error(`Error deleting employee with ID ${id}:`, error);
-    return NextResponse.json(
-      { error: 'Failed to delete employee' },
-      { status: 500 }
-    );
-  }
+    return createSuccessResponse({ message: 'Employee deleted successfully' });
+  });
 } 

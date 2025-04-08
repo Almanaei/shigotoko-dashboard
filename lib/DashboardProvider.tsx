@@ -80,6 +80,21 @@ export interface ProjectLog {
   details?: string;
 }
 
+export interface Document {
+  id: string;
+  name: string;
+  fileType: string;
+  size: number;
+  uploadedBy: string;
+  uploadedById: string;
+  uploadDate: string;
+  url: string;
+  sharedWith: string[]; // Array of user IDs
+  projectId?: string; // Optional connection to a project
+  description?: string;
+  tags?: string[];
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -101,6 +116,7 @@ export interface DashboardState {
   departments: Department[];
   projects: Project[];
   projectLogs: ProjectLog[];
+  documents: Document[];
   tasks: Task[];
   stats: Stats;
   notifications: Notification[];
@@ -125,6 +141,10 @@ export const ACTIONS = {
   UPDATE_PROJECT: 'UPDATE_PROJECT',
   DELETE_PROJECT: 'DELETE_PROJECT',
   ADD_PROJECT_LOG: 'ADD_PROJECT_LOG',
+  SET_DOCUMENTS: 'SET_DOCUMENTS',
+  ADD_DOCUMENT: 'ADD_DOCUMENT',
+  UPDATE_DOCUMENT: 'UPDATE_DOCUMENT',
+  DELETE_DOCUMENT: 'DELETE_DOCUMENT',
   SET_TASKS: 'SET_TASKS',
   ADD_TASK: 'ADD_TASK',
   UPDATE_TASK: 'UPDATE_TASK',
@@ -156,6 +176,10 @@ type Action =
   | { type: typeof ACTIONS.UPDATE_PROJECT; payload: { id: string; project: Partial<Project> } }
   | { type: typeof ACTIONS.DELETE_PROJECT; payload: string }
   | { type: typeof ACTIONS.ADD_PROJECT_LOG; payload: ProjectLog }
+  | { type: typeof ACTIONS.SET_DOCUMENTS; payload: Document[] }
+  | { type: typeof ACTIONS.ADD_DOCUMENT; payload: Document }
+  | { type: typeof ACTIONS.UPDATE_DOCUMENT; payload: { id: string; document: Partial<Document> } }
+  | { type: typeof ACTIONS.DELETE_DOCUMENT; payload: string }
   | { type: typeof ACTIONS.SET_TASKS; payload: Task[] }
   | { type: typeof ACTIONS.ADD_TASK; payload: Task }
   | { type: typeof ACTIONS.UPDATE_TASK; payload: { id: string; task: Partial<Task> } }
@@ -176,6 +200,7 @@ const initialState: DashboardState = {
   departments: [],
   projects: [],
   projectLogs: [],
+  documents: [],
   tasks: [],
   stats: {
     totalEmployees: 0,
@@ -261,6 +286,24 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
         projectLogs: [...state.projectLogs, newLog]
       };
     }
+    case ACTIONS.SET_DOCUMENTS:
+      return { ...state, documents: action.payload };
+    case ACTIONS.ADD_DOCUMENT:
+      return { ...state, documents: [...state.documents, action.payload] };
+    case ACTIONS.UPDATE_DOCUMENT: {
+      const { id, document } = action.payload;
+      return {
+        ...state,
+        documents: state.documents.map(doc =>
+          doc.id === id ? { ...doc, ...document } : doc
+        ),
+      };
+    }
+    case ACTIONS.DELETE_DOCUMENT:
+      return {
+        ...state,
+        documents: state.documents.filter(doc => doc.id !== action.payload),
+      };
     case ACTIONS.SET_TASKS:
       return { ...state, tasks: action.payload };
     case ACTIONS.ADD_TASK:
@@ -319,9 +362,76 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
           
           console.log('DashboardProvider: Attempting to load user data...');
           
-          // Try to get current user from session
-          console.log('DashboardProvider: Calling API.auth.getCurrentUser()');
-          const currentUser = await API.auth.getCurrentUser();
+          // Check if we have sync cookie - if not, likely not authenticated
+          const hasSyncCookie = document.cookie.split(';').some(c => 
+            c.trim().startsWith('session-token-sync='));
+          
+          // Check for both cookie formats
+          const hasHyphenCookie = document.cookie.split(';').some(c => 
+            c.trim().startsWith('session-token='));
+          
+          const hasUnderscoreCookie = document.cookie.split(';').some(c => 
+            c.trim().startsWith('session_token='));
+          
+          const hasSessionCookie = hasHyphenCookie || hasUnderscoreCookie;
+          
+          console.log('DashboardProvider: Cookie check - session-token-sync:', hasSyncCookie, 
+            'session-token:', hasHyphenCookie, 
+            'session_token:', hasUnderscoreCookie);
+          
+          // Skip the API call if we know we're not authenticated
+          let currentUser = null;
+          if (hasSessionCookie || hasSyncCookie) {
+            // Try to get current user from session
+            console.log('DashboardProvider: Calling API.auth.getCurrentUser()');
+            try {
+              currentUser = await API.auth.getCurrentUser();
+            } catch (authError) {
+              console.error('DashboardProvider: Error getting current user:', authError);
+              
+              // Run auth diagnostics to help troubleshoot the issue
+              console.log('DashboardProvider: Running auth diagnostics...');
+              try {
+                const authStatus = await API.auth.checkAuthStatus();
+                if (authStatus.status !== 'authenticated') {
+                  console.log('DashboardProvider: Auth diagnostic complete - not authenticated');
+                  
+                  // If we have a cookie but no valid session, clear the cookies
+                  if (authStatus.diagnostics?.cookies?.session_hyphen || 
+                      authStatus.diagnostics?.cookies?.session_underscore) {
+                      
+                    console.log('DashboardProvider: Detected cookie without valid session - clearing cookies');
+                    document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                    document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                    document.cookie = "session-token-sync=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                  }
+                }
+              } catch (diagError) {
+                console.error('DashboardProvider: Error running auth diagnostics:', diagError);
+              }
+              
+              // Check if we were just logged in - if so, we can try to recover
+              const justLoggedIn = localStorage.getItem('justLoggedIn');
+              const storedEmail = localStorage.getItem('userEmail');
+              
+              if (justLoggedIn === 'true' && storedEmail) {
+                console.log('DashboardProvider: Detected recent login, attempting recovery...');
+                
+                // Clear localStorage markers to prevent loops
+                localStorage.removeItem('justLoggedIn');
+                
+                // Alert user about the issue
+                console.warn('DashboardProvider: Session issue detected after login, redirecting back to login');
+                
+                // Redirect back to login for a fresh attempt
+                if (typeof window !== 'undefined') {
+                  window.location.href = `/login?email=${encodeURIComponent(storedEmail)}&recovery=true`;
+                }
+              }
+            }
+          } else {
+            console.log('DashboardProvider: No session cookies found, skipping API call');
+          }
           
           if (currentUser) {
             console.log('DashboardProvider: User data loaded successfully:', currentUser);
@@ -329,6 +439,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
               type: ACTIONS.SET_CURRENT_USER,
               payload: currentUser
             });
+            
+            console.log('DashboardProvider: Initializing mock data for dashboard components');
+            // Initialize mock data for dashboard components (but not user)
+            initializeMockData(dispatch);
           } else {
             console.log('DashboardProvider: No user data found, API returned null');
             
@@ -338,28 +452,43 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             
             if (hasCookie) {
               console.log('DashboardProvider: Found session-token cookie but API returned no user - cookie may be invalid');
+              // Clear the invalid cookie
+              document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+              console.log('DashboardProvider: Cleared invalid session-token cookie');
             } else {
               console.log('DashboardProvider: No session-token cookie found');
             }
             
-            // Only set mock user if no real user was found
-            const mockUser: User = {
-              id: 'user-1',
-              name: 'Admin User',
-              email: 'admin@shigotoko.com',
-              avatar: '/avatars/admin.jpg',
-              role: 'Admin'
-            };
-            
-            dispatch({
-              type: ACTIONS.SET_CURRENT_USER,
-              payload: mockUser
-            });
+            // For development convenience only:
+            if (process.env.NODE_ENV === 'development') {
+              console.log('DashboardProvider: Using mock user for development');
+              // Only set mock user if no real user was found and in development
+              const mockUser: User = {
+                id: 'user-1',
+                name: 'Admin User',
+                email: 'admin@shigotoko.com',
+                avatar: '/avatars/admin.jpg',
+                role: 'Admin'
+              };
+              
+              dispatch({
+                type: ACTIONS.SET_CURRENT_USER,
+                payload: mockUser
+              });
+              
+              console.log('DashboardProvider: Initializing mock data for dashboard components');
+              // Initialize mock data for dashboard components
+              initializeMockData(dispatch);
+            } else {
+              // In production, don't use mock data
+              console.log('DashboardProvider: No authenticated user found, not using mock user in production');
+              // Set currentUser to null to indicate no authentication
+              dispatch({
+                type: ACTIONS.SET_CURRENT_USER,
+                payload: null
+              });
+            }
           }
-          
-          console.log('DashboardProvider: Initializing mock data for dashboard components');
-          // Initialize mock data for dashboard components (but not user)
-          initializeMockData(dispatch);
           
           dispatch({ type: ACTIONS.SET_LOADING, payload: false });
           setInitialized(true);

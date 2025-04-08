@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { API } from '@/lib/api';
 
@@ -9,31 +9,120 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(false);
   const router = useRouter();
+
+  // Check for recovery parameters on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const recoveryEmail = params.get('email');
+      const isRecoveryAttempt = params.get('recovery') === 'true';
+      
+      if (recoveryEmail) {
+        setEmail(recoveryEmail);
+      }
+      
+      if (isRecoveryAttempt) {
+        setIsRecovery(true);
+        setError('Your login session had an issue. Please try logging in again.');
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     
-    console.log('Login attempt with:', email, password);
+    console.log('Login attempt with:', email);
     
     try {
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-        credentials: 'include' // Important for cookies
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+      // Clear any existing session cookies first
+      if (typeof document !== 'undefined') {
+        document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie = "session-token-sync=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        console.log('Cleared existing session cookies before login attempt');
       }
       
-      console.log('Login successful, redirecting to dashboard');
-      window.location.href = '/'; // Force a full page refresh
+      // Try both authentication methods (User and Employee)
+      let user = null;
+      let authType = '';
+      
+      // First try regular User login
+      try {
+        console.log('Attempting User authentication...');
+        user = await API.auth.login({ email, password });
+        if (user) {
+          console.log('User authentication successful');
+          authType = 'user';
+        }
+      } catch (userAuthError) {
+        console.log('User authentication failed:', userAuthError);
+      }
+      
+      // If User login failed, try Employee login
+      if (!user) {
+        try {
+          console.log('Attempting Employee authentication...');
+          user = await API.auth.employeeLogin({ email, password });
+          if (user) {
+            console.log('Employee authentication successful');
+            authType = 'employee';
+          }
+        } catch (employeeAuthError) {
+          console.log('Employee authentication failed:', employeeAuthError);
+        }
+      }
+      
+      if (user) {
+        console.log(`Login successful via ${authType} authentication, user data:`, user);
+        
+        // Give the server a moment to fully process the session creation
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Check if the cookie was set by the server
+        const hasHyphenCookie = document.cookie.split(';').some(c => 
+          c.trim().startsWith('session-token='));
+        
+        const hasUnderscoreCookie = document.cookie.split(';').some(c => 
+          c.trim().startsWith('session_token='));
+          
+        console.log('After login - session-token cookie present:', hasHyphenCookie);
+        console.log('After login - session_token cookie present:', hasUnderscoreCookie);
+        
+        // Force set the cookie client-side for immediate synchronization
+        if (typeof document !== 'undefined') {
+          // Set a temporary non-httpOnly cookie to ensure we have a session marker
+          const expiresDate = new Date();
+          expiresDate.setDate(expiresDate.getDate() + 30);
+          document.cookie = `session-token-sync=true; expires=${expiresDate.toUTCString()}; path=/;`;
+          console.log('Set session-token-sync cookie for client-side verification');
+          
+          // If hyphen cookie is missing but we got a valid user response, try to also set it client-side
+          // This helps in case the HttpOnly cookie wasn't properly set by the server
+          if (!hasHyphenCookie && !hasUnderscoreCookie) {
+            console.log('Warning: No session cookie detected after login. Setting a fallback cookie.');
+            // This is a fallback and less secure than the HttpOnly cookie set by the server
+            // But it at least allows immediate usage until the user can properly log in again
+            const fallbackExpires = new Date();
+            fallbackExpires.setMinutes(fallbackExpires.getMinutes() + 30); // Short expiry for security
+            document.cookie = `session_token=temp-${Date.now()}; expires=${fallbackExpires.toUTCString()}; path=/;`;
+          }
+        }
+        
+        // Add a small delay to ensure cookies are properly set
+        setTimeout(() => {
+          localStorage.setItem('justLoggedIn', 'true');
+          localStorage.setItem('userEmail', email); // Store for possible retry purposes
+          localStorage.setItem('authType', authType); // Store auth type for possible future use
+          console.log('Redirecting to dashboard...');
+          window.location.href = '/';
+        }, 500);
+      } else {
+        throw new Error('Login failed - incorrect email or password');
+      }
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Failed to login. Please try again.');

@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,18 +8,18 @@ datasource db {
 }
 
 model User {
-  id            String          @id @default(uuid())
+  id            String         @id @default(uuid())
   name          String
-  email         String          @unique
-  password      String          // Adding password field for authentication
+  email         String         @unique
+  password      String
   avatar        String?
   role          String
   department    String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  notifications Notification[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   messages      Message[]
-  sessions      Session[]       // Relation to sessions
+  notifications Notification[]
+  sessions      Session[]
 }
 
 model Session {
@@ -34,122 +28,147 @@ model Session {
   expires   DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model Employee {
-  id          String        @id @default(uuid())
-  name        String
-  position    String
-  department  Department    @relation(fields: [departmentId], references: [id])
-  departmentId String
-  email       String        @unique
-  phone       String?
-  avatar      String?
-  status      String
-  joinDate    DateTime
-  performance Int
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  projects    ProjectsOnEmployees[]
-  messages    Message[]
+  id                String                @id @default(uuid())
+  name              String
+  position          String
+  departmentId      String
+  email             String                @unique
+  phone             String?
+  avatar            String?
+  status            String
+  joinDate          DateTime
+  performance       Int
+  role              String                @default("employee")
+  password          String?
+  sessions          Session[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  uploadedDocuments Document[]
+  department        Department            @relation(fields: [departmentId], references: [id])
+  messages          Message[]
+  projects          ProjectsOnEmployees[]
+  sharedDocuments   Document[]            @relation("DocumentSharedWith")
 }
 
 model Department {
-  id          String      @id @default(uuid())
-  name        String
-  description String?
-  employeeCount Int       @default(0)
-  color       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  employees   Employee[]
+  id            String     @id @default(uuid())
+  name          String
+  description   String?
+  employeeCount Int        @default(0)
+  color         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  employees     Employee[]
 }
 
 model Project {
-  id          String      @id @default(uuid())
+  id          String                @id @default(uuid())
   name        String
   description String?
   status      String
-  progress    Int         @default(0)
+  progress    Int                   @default(0)
   startDate   DateTime
   endDate     DateTime?
   budget      Float?
   client      String?
   priority    String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  documents   Document[]
+  logs        ProjectLog[]
   members     ProjectsOnEmployees[]
   tasks       Task[]
-  logs        ProjectLog[]
 }
 
 model ProjectsOnEmployees {
-  employee    Employee    @relation(fields: [employeeId], references: [id])
-  employeeId  String
-  project     Project     @relation(fields: [projectId], references: [id])
-  projectId   String
-  role        String?
-  assignedAt  DateTime    @default(now())
+  employeeId String
+  projectId  String
+  role       String?
+  assignedAt DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  project    Project  @relation(fields: [projectId], references: [id])
 
   @@id([employeeId, projectId])
 }
 
 model Task {
-  id          String      @id @default(uuid())
+  id          String    @id @default(uuid())
   title       String
   description String?
   status      String
   priority    String
   dueDate     DateTime?
-  project     Project?    @relation(fields: [projectId], references: [id])
   projectId   String?
-  assigneeId  String?     // Employee ID
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  assigneeId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  project     Project?  @relation(fields: [projectId], references: [id])
 }
 
 model Message {
-  id          String      @id @default(uuid())
-  content     String
-  sender      User?       @relation(fields: [senderId], references: [id])
-  senderId    String?
-  employee    Employee?   @relation(fields: [employeeId], references: [id])
-  employeeId  String?
-  senderName  String?     // For legacy messages or system messages
-  timestamp   DateTime    @default(now())
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id         String    @id @default(uuid())
+  content    String
+  senderId   String?
+  employeeId String?
+  senderName String?
+  timestamp  DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+  sender     User?     @relation(fields: [senderId], references: [id])
 }
 
 model Notification {
-  id          String      @id @default(uuid())
-  title       String
-  message     String
-  type        String
-  read        Boolean     @default(false)
-  user        User        @relation(fields: [userId], references: [id])
-  userId      String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String
+  read      Boolean  @default(false)
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model ProjectLog {
-  id          String      @id @default(uuid())
+  id          String   @id @default(uuid())
   action      String
   description String
-  project     Project     @relation(fields: [projectId], references: [id])
   projectId   String
-  timestamp   DateTime    @default(now())
+  timestamp   DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id])
 }
 
 model Stats {
-  id            String    @id @default(uuid())
-  totalEmployees Int
-  totalProjects  Int
-  totalTasks     Int
-  completedTasks Int
+  id              String   @id @default(uuid())
+  totalEmployees  Int
+  totalProjects   Int
+  totalTasks      Int
+  completedTasks  Int
   ongoingProjects Int
-  monthlyData    Json?    // Store monthly statistics as JSON
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  monthlyData     Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Document {
+  id           String     @id @default(uuid())
+  name         String
+  fileType     String
+  size         Int
+  url          String
+  description  String?
+  tags         String[]   @default([])
+  projectId    String?
+  uploadedById String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  project      Project?   @relation(fields: [projectId], references: [id])
+  uploadedBy   Employee   @relation(fields: [uploadedById], references: [id])
+  sharedWith   Employee[] @relation("DocumentSharedWith")
 }
