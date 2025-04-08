@@ -113,10 +113,15 @@ export default function Navbar() {
             // Validate avatar before updating state
             if (profile.avatar) {
               // Check if it's a valid image format
-              const isValidAvatar = 
-                profile.avatar.startsWith('data:image/') || 
-                profile.avatar.startsWith('http') ||
-                profile.avatar.startsWith('/');
+              const isValidAvatar = Boolean(
+                profile.avatar && 
+                typeof profile.avatar === 'string' &&
+                (
+                  profile.avatar.startsWith('data:image/') || 
+                  profile.avatar.startsWith('http') ||
+                  profile.avatar.startsWith('/')
+                )
+              );
                 
               if (!isValidAvatar) {
                 console.log('Navbar: Received invalid avatar format, removing it:', 
@@ -295,22 +300,41 @@ export default function Navbar() {
     if (!currentUser) return null;
 
     // Create fallback avatar with initials
-    const renderInitials = () => (
-      <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
-        {currentUser.name
-          .split(' ')
-          .map(part => part.charAt(0))
-          .slice(0, 2)
-          .join('')
-          .toUpperCase()}
-      </div>
-    );
+    const renderInitials = () => {
+      // Safely get initials, even if name is undefined
+      const safelyGetInitials = () => {
+        const name = currentUser?.name || 'User';
+        if (!name || typeof name !== 'string') return 'U';
+        
+        try {
+          return name
+            .split(' ')
+            .map(part => part.charAt(0))
+            .slice(0, 2)
+            .join('')
+            .toUpperCase() || 'U';
+        } catch (err) {
+          return 'U'; // Default if anything goes wrong
+        }
+      };
+      
+      return (
+        <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
+          {safelyGetInitials()}
+        </div>
+      );
+    };
     
     // Check if avatar is valid before trying to render it
-    const isValidAvatar = currentUser.avatar && 
-      (currentUser.avatar.startsWith('data:image/') || 
-       currentUser.avatar.startsWith('http') ||
-       currentUser.avatar.startsWith('/'));
+    const isValidAvatar = Boolean(
+      currentUser?.avatar && 
+      typeof currentUser.avatar === 'string' &&
+      (
+        currentUser.avatar.startsWith('data:image/') || 
+        currentUser.avatar.startsWith('http') ||
+        currentUser.avatar.startsWith('/')
+      )
+    );
     
     // If we don't have a valid avatar, just render the initials
     if (!isValidAvatar) {
@@ -320,49 +344,72 @@ export default function Navbar() {
     // If we have a valid avatar, render it with a fallback
     return (
       <div className="relative h-8 w-8">
-        <img
-          className="h-8 w-8 rounded-full object-cover border border-gray-200 dark:border-gray-700"
-          src={currentUser.avatar}
-          alt={currentUser.name}
-          onError={(e) => {
-            // If image fails to load, show initials instead and log debug info
-            console.error('Avatar image failed to load:', {
-              src: currentUser.avatar ? currentUser.avatar.substring(0, 50) + '...' : 'undefined',
-              type: currentUser.avatar ? (
-                currentUser.avatar.startsWith('data:') ? 'data:URL' : 
-                currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
-              ) : 'undefined',
-              length: currentUser.avatar ? currentUser.avatar.length : 0
-            });
-            
-            // Set a flag that the avatar failed to load
-            localStorage.setItem('avatarFailedToLoad', 'true');
-            
-            // Hide the broken image
-            e.currentTarget.style.display = 'none';
-            
-            // Show the fallback avatar (initials)
-            const fallback = document.getElementById('avatar-fallback');
-            if (fallback) fallback.classList.remove('hidden');
-            
-            // Try refreshing the profile after a short delay (only once)
-            if (avatarRefreshAttempt === 0) {
-              setTimeout(() => {
-                setAvatarRefreshAttempt(1);
-              }, 2000);
-            }
-          }}
-        />
+        {/* Wrap in an error boundary to prevent crashes */}
+        <div className="relative h-8 w-8">
+          <img
+            className="h-8 w-8 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+            src={currentUser.avatar || ''}
+            alt={currentUser.name || 'User'}
+            onError={(e) => {
+              try {
+                // If image fails to load, show initials instead and log debug info
+                const avatarSrc = currentUser?.avatar || '';
+                console.error('Avatar image failed to load:', {
+                  src: avatarSrc ? avatarSrc.substring(0, 50) + '...' : 'undefined',
+                  type: avatarSrc ? (
+                    avatarSrc.startsWith('data:') ? 'data:URL' : 
+                    avatarSrc.startsWith('http') ? 'HTTP URL' : 'Other'
+                  ) : 'undefined',
+                  length: avatarSrc ? avatarSrc.length : 0
+                });
+                
+                // Set a flag that the avatar failed to load
+                if (typeof localStorage !== 'undefined') {
+                  localStorage.setItem('avatarFailedToLoad', 'true');
+                }
+                
+                // Hide the broken image
+                if (e.currentTarget) {
+                  e.currentTarget.style.display = 'none';
+                }
+                
+                // Show the fallback avatar (initials)
+                const fallback = document.getElementById('avatar-fallback');
+                if (fallback) {
+                  fallback.classList.remove('hidden');
+                }
+                
+                // Try refreshing the profile after a short delay (only once)
+                if (avatarRefreshAttempt === 0) {
+                  setTimeout(() => {
+                    setAvatarRefreshAttempt(1);
+                  }, 2000);
+                }
+              } catch (err) {
+                console.error('Error in avatar onError handler:', err);
+              }
+            }}
+          />
+        </div>
         <div 
           id="avatar-fallback"
           className="hidden absolute inset-0 h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium"
         >
-          {currentUser.name
-            .split(' ')
-            .map(part => part.charAt(0))
-            .slice(0, 2)
-            .join('')
-            .toUpperCase()}
+          {(() => {
+            const name = currentUser?.name || 'User';
+            if (!name || typeof name !== 'string') return 'U';
+            
+            try {
+              return name
+                .split(' ')
+                .map(part => part.charAt(0))
+                .slice(0, 2)
+                .join('')
+                .toUpperCase() || 'U';
+            } catch (err) {
+              return 'U'; // Default if anything goes wrong
+            }
+          })()}
         </div>
         
         {/* Display avatar error if any, shown only in development */}
