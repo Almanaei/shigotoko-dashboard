@@ -60,6 +60,31 @@ export default function Navbar() {
       const initialDarkMode = savedTheme === 'dark';
       setIsDarkMode(initialDarkMode);
     }
+    
+    // Check for auth_type cookie on component mount
+    // This helps with determining which authentication method was used
+    if (typeof document !== 'undefined') {
+      const cookies = document.cookie.split(';');
+      const authTypeCookie = cookies.find(c => c.trim().startsWith('auth_type='));
+      
+      if (authTypeCookie) {
+        const authType = authTypeCookie.split('=')[1];
+        console.log('Navbar: Detected auth_type cookie:', authType);
+        localStorage.setItem('authType', authType);
+      } else {
+        // Try to detect by session cookie presence
+        const hasEmployeeSession = cookies.some(c => c.trim().startsWith('employee-session='));
+        const hasUserSession = cookies.some(c => c.trim().startsWith('session-token=') || c.trim().startsWith('session_token='));
+        
+        if (hasEmployeeSession) {
+          console.log('Navbar: Detected employee session, setting authType');
+          localStorage.setItem('authType', 'employee');
+        } else if (hasUserSession) {
+          console.log('Navbar: Detected user session, setting authType');
+          localStorage.setItem('authType', 'user');
+        }
+      }
+    }
   }, []);
   
   // Make sure we have a theme value

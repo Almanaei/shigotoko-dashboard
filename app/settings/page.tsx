@@ -89,14 +89,25 @@ export default function SettingsPage() {
       setError('');
       
       try {
-        // Try to get user data from standard User authentication first
-        let userData = await API.auth.getCurrentUser();
+        // Check which authentication cookie exists
+        const hasUserCookie = document.cookie.split(';').some(c => 
+          c.trim().startsWith('session-token=') || c.trim().startsWith('session_token='));
         
-        // If no user data found, try Employee authentication
-        if (!userData) {
-          console.log('Settings page: No user data from standard auth, trying employee auth...');
+        const hasEmployeeCookie = document.cookie.split(';').some(c => 
+          c.trim().startsWith('employee-session='));
+        
+        console.log('Settings page: Auth cookies found:', { 
+          hasUserCookie, 
+          hasEmployeeCookie,
+          allCookies: document.cookie.split(';').map(c => c.trim().split('=')[0])
+        });
+        
+        let userData = null;
+        
+        // Try Employee authentication first if that cookie exists
+        if (hasEmployeeCookie) {
+          console.log('Settings page: Employee session cookie found, trying employee auth...');
           
-          // Try employee authentication endpoint directly
           try {
             const employeeResponse = await fetch('/api/auth/employee', {
               method: 'GET',
@@ -109,11 +120,27 @@ export default function SettingsPage() {
             if (employeeResponse.ok) {
               userData = await employeeResponse.json();
               console.log('Settings page: Retrieved employee data:', userData);
+              
+              // Store auth type for future use
+              localStorage.setItem('authType', 'employee');
             } else {
               console.log('Settings page: Employee auth failed with status:', employeeResponse.status);
+              // Try clearing and re-applying the employee cookie
+              document.cookie = "employee-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
             }
           } catch (employeeError) {
             console.error('Settings page: Error fetching employee data:', employeeError);
+          }
+        }
+        
+        // Try standard User authentication if employee auth failed or its cookie doesn't exist
+        if (!userData && hasUserCookie) {
+          console.log('Settings page: Trying standard user auth...');
+          userData = await API.auth.getCurrentUser();
+          
+          if (userData) {
+            console.log('Settings page: Retrieved user data from standard auth:', userData);
+            localStorage.setItem('authType', 'user');
           }
         }
         
@@ -134,6 +161,13 @@ export default function SettingsPage() {
         } else {
           console.log('Settings page: No user/employee data returned from API');
           setError('Could not retrieve user data. Please try again.');
+          
+          // If no auth method succeeded, redirect to login after a delay
+          setTimeout(() => {
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login';
+            }
+          }, 3000);
         }
       } catch (error) {
         console.error('Settings page: Error fetching user data:', error);

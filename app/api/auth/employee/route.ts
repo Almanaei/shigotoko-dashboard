@@ -106,6 +106,17 @@ export async function POST(request: NextRequest) {
       path: '/',
     });
     
+    // Also set a non-HttpOnly cookie with the authentication type for client-side detection
+    response.cookies.set({
+      name: 'auth_type',
+      value: 'employee',
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: '/',
+    });
+    
     console.log('Employee Login successful for:', employee.name, employee.email);
     return response;
     
@@ -126,6 +137,7 @@ export async function GET(request: NextRequest) {
     
     if (!sessionToken) {
       console.log('GET /api/auth/employee - No session token found in cookies');
+      console.log('GET /api/auth/employee - All cookies:', request.cookies.getAll().map(c => c.name));
       return NextResponse.json(
         { error: 'Not authenticated', reason: 'no_session_token' },
         { status: 401 }
