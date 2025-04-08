@@ -118,85 +118,91 @@ export default function SettingsPage() {
         
         let userData = null;
         
-        // Try standard User authentication first (more likely to work based on your logs)
-        if (hasUserCookie || effectiveAuthType === 'user') {
-          console.log('Settings page: Trying standard user auth first...');
-          try {
-            userData = await API.auth.getCurrentUser();
-            
-            if (userData) {
-              console.log('Settings page: Retrieved user data from standard auth:', userData);
-              localStorage.setItem('authType', 'user');
-            }
-          } catch (userAuthError) {
-            console.error('Settings page: Error during user auth:', userAuthError);
-          }
-        }
-        
-        // If User login failed, try Employee login
-        if (!userData && (hasEmployeeCookie || effectiveAuthType === 'employee')) {
-          console.log('Settings page: Trying employee auth...');
-          
-          try {
-            const employeeResponse = await fetch('/api/auth/employee', {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              credentials: 'include', // Include cookies for authentication
-            });
-            
-            if (employeeResponse.ok) {
-              userData = await employeeResponse.json();
-              console.log('Settings page: Retrieved employee data:', userData);
+        // If we already have currentUser data in the dashboard state, use that to avoid a reload loop
+        if (currentUser && currentUser.id) {
+          console.log('Settings page: Using existing currentUser data');
+          userData = currentUser;
+        } 
+        // Otherwise try authentication methods
+        else {
+          // Try standard User authentication first (more likely to work based on your logs)
+          if (hasUserCookie || effectiveAuthType === 'user') {
+            console.log('Settings page: Trying standard user auth first...');
+            try {
+              userData = await API.auth.getCurrentUser();
               
-              // Store auth type for future use
-              localStorage.setItem('authType', 'employee');
-            } else {
-              console.log('Settings page: Employee auth failed with status:', employeeResponse.status);
-            }
-          } catch (employeeError) {
-            console.error('Settings page: Error fetching employee data:', employeeError);
-          }
-        }
-        
-        // Last resort: Try API health check to see if API is working
-        if (!userData) {
-          try {
-            console.log('Settings page: Trying API health check as fallback...');
-            const healthCheck = await fetch('/api/auth/check', {
-              credentials: 'include',
-            });
-            
-            if (healthCheck.ok) {
-              const healthData = await healthCheck.json();
-              console.log('Settings page: API health check response:', healthData);
-              
-              // If the API returns a valid user from health check, use it
-              if (healthData.user) {
-                userData = healthData.user;
-                console.log('Settings page: Retrieved user from health check:', userData);
+              if (userData) {
+                console.log('Settings page: Retrieved user data from standard auth:', userData);
+                localStorage.setItem('authType', 'user');
               }
+            } catch (userAuthError) {
+              console.error('Settings page: Error during user auth:', userAuthError);
             }
-          } catch (healthCheckError) {
-            console.error('Settings page: Health check failed:', healthCheckError);
           }
           
-          // If we still have no data, try to get the user directly from the dashboard state
-          if (!userData && currentUser) {
-            console.log('Settings page: Falling back to dashboard state user:', currentUser);
-            userData = currentUser;
+          // If User login failed, try Employee login
+          if (!userData && (hasEmployeeCookie || effectiveAuthType === 'employee')) {
+            console.log('Settings page: Trying employee auth...');
+            
+            try {
+              const employeeResponse = await fetch('/api/auth/employee', {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                credentials: 'include', // Include cookies for authentication
+              });
+              
+              if (employeeResponse.ok) {
+                userData = await employeeResponse.json();
+                console.log('Settings page: Retrieved employee data:', userData);
+                
+                // Store auth type for future use
+                localStorage.setItem('authType', 'employee');
+              } else {
+                console.log('Settings page: Employee auth failed with status:', employeeResponse.status);
+              }
+            } catch (employeeError) {
+              console.error('Settings page: Error fetching employee data:', employeeError);
+            }
+          }
+          
+          // Last resort: Try API health check to see if API is working
+          if (!userData) {
+            try {
+              console.log('Settings page: Trying API health check as fallback...');
+              const healthCheck = await fetch('/api/auth/check', {
+                credentials: 'include',
+              });
+              
+              if (healthCheck.ok) {
+                const healthData = await healthCheck.json();
+                console.log('Settings page: API health check response:', healthData);
+                
+                // If the API returns a valid user from health check, use it
+                if (healthData.user) {
+                  userData = healthData.user;
+                  console.log('Settings page: Retrieved user from health check:', userData);
+                }
+              }
+            } catch (healthCheckError) {
+              console.error('Settings page: Health check failed:', healthCheckError);
+            }
           }
         }
         
         if (userData) {
           console.log('Settings page: Retrieved user/employee data:', userData);
-          dispatch({
-            type: ACTIONS.SET_CURRENT_USER,
-            payload: userData
-          });
           
-          // Update form with fresh user data
+          // Only update Redux state if the user data has actually changed
+          if (!currentUser || currentUser.id !== userData.id) {
+            dispatch({
+              type: ACTIONS.SET_CURRENT_USER,
+              payload: userData
+            });
+          }
+          
+          // Update form with user data
           setProfileForm({
             name: userData.name,
             email: userData.email,
@@ -206,9 +212,6 @@ export default function SettingsPage() {
         } else {
           console.log('Settings page: No user/employee data returned from API');
           setError('Could not retrieve user data. Please try again.');
-          
-          // DO NOT automatically redirect - let the user manually refresh or go back
-          // Instead, add a refresh button to the error message
         }
       } catch (error) {
         console.error('Settings page: Error fetching user data:', error);
@@ -219,20 +222,27 @@ export default function SettingsPage() {
     };
     
     fetchCurrentUser();
-  }, [dispatch, currentUser]);
+  }, [dispatch]); // Remove currentUser from dependencies
   
   // Update form if currentUser changes
   useEffect(() => {
     if (currentUser && !isLoading) {
-      console.log('Settings page: Updating form with current user data:', currentUser);
-      setProfileForm({
-        name: currentUser.name,
-        email: currentUser.email,
-        role: currentUser.role,
-        avatar: currentUser.avatar || '',
-      });
+      // Only update form if necessary to prevent infinite updates
+      if (
+        profileForm.name !== currentUser.name ||
+        profileForm.email !== currentUser.email ||
+        profileForm.role !== currentUser.role
+      ) {
+        console.log('Settings page: Updating form with current user data:', currentUser);
+        setProfileForm({
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role || 'employee',
+          avatar: currentUser.avatar || '',
+        });
+      }
     }
-  }, [currentUser, isLoading]);
+  }, [currentUser, isLoading, profileForm.name, profileForm.email, profileForm.role]);
   
   // Handle profile form submission
   const handleProfileSubmit = async (e: React.FormEvent) => {
