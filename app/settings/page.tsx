@@ -84,6 +84,34 @@ export default function SettingsPage() {
   
   // Fetch current user data when component loads
   useEffect(() => {
+    // Skip if we're in an iframe to prevent double loading
+    if (typeof window !== 'undefined' && window.top !== window.self) {
+      console.log('Settings page: Skipping load in iframe/embedded context');
+      return;
+    }
+    
+    // Prevent multiple rapid calls
+    const lastFetchTime = localStorage.getItem('settings_last_fetch');
+    const now = Date.now();
+    
+    if (lastFetchTime && now - parseInt(lastFetchTime) < 2000) {
+      console.log('Settings page: Skipping fetch - too soon since last attempt');
+      // Use existing data if we have it
+      if (currentUser) {
+        setProfileForm({
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role || 'employee',
+          avatar: currentUser.avatar || '',
+        });
+        setIsLoading(false);
+      }
+      return;
+    }
+    
+    // Update last fetch timestamp
+    localStorage.setItem('settings_last_fetch', now.toString());
+    
     const fetchCurrentUser = async () => {
       setIsLoading(true);
       setError('');
@@ -164,29 +192,6 @@ export default function SettingsPage() {
               }
             } catch (employeeError) {
               console.error('Settings page: Error fetching employee data:', employeeError);
-            }
-          }
-          
-          // Last resort: Try API health check to see if API is working
-          if (!userData) {
-            try {
-              console.log('Settings page: Trying API health check as fallback...');
-              const healthCheck = await fetch('/api/auth/check', {
-                credentials: 'include',
-              });
-              
-              if (healthCheck.ok) {
-                const healthData = await healthCheck.json();
-                console.log('Settings page: API health check response:', healthData);
-                
-                // If the API returns a valid user from health check, use it
-                if (healthData.user) {
-                  userData = healthData.user;
-                  console.log('Settings page: Retrieved user from health check:', userData);
-                }
-              }
-            } catch (healthCheckError) {
-              console.error('Settings page: Health check failed:', healthCheckError);
             }
           }
         }
