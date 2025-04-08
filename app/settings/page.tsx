@@ -308,6 +308,22 @@ export default function SettingsPage() {
         // Show loading state
         setIsLoading(true);
         
+        // Double-check session validity before proceeding
+        const sessionValid = await refreshAuthSession();
+        if (!sessionValid) {
+          console.warn('Settings page: Session validation failed before profile update');
+          setError('Your session may have expired. Attempting to restore it...');
+          
+          // Try again more aggressively with a slight delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const secondAttempt = await refreshAuthSession();
+          if (!secondAttempt) {
+            throw new Error('Session expired and could not be restored');
+          }
+          
+          console.log('Settings page: Session restored successfully');
+        }
+        
         // Create API-compatible object structure
         const profileUpdate: Record<string, string> = {
           name: profileForm.name,

@@ -15,6 +15,16 @@ async function fetchAPI<T>(
     'Content-Type': 'application/json',
   };
   
+  // Check if we need to refresh the session before making a critical request
+  if (endpoint === '/user' || endpoint.startsWith('/employees/')) {
+    try {
+      console.log('API: Pre-emptively refreshing session before critical request to:', endpoint);
+      await refreshSession();
+    } catch (refreshError) {
+      console.warn('API: Failed to refresh session before critical request:', refreshError);
+    }
+  }
+  
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -43,17 +53,93 @@ async function fetchAPI<T>(
     if (response.status === 401) {
       console.log('API: Authentication required for', endpoint);
       
-      // Clear only the standard session token cookie on auth errors
-      if (typeof document !== 'undefined') {
-        document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-        console.log('API: Cleared session cookie due to authentication error');
+      // Try to refresh the session
+      try {
+        console.log('API: Attempting to refresh session after 401 error');
+        const refreshed = await refreshSession();
+        
+        if (refreshed) {
+          console.log('API: Session refreshed successfully, retrying original request');
+          // Session refreshed, retry original request
+          return fetchAPI<T>(endpoint, options);
+        }
+      } catch (refreshError) {
+        console.warn('API: Failed to refresh session after 401:', refreshError);
       }
+      
+      // Only clear cookies if refresh attempt failed or wasn't successful
+      if (typeof document !== 'undefined') {
+        // Clear session cookies on auth errors
+        document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie = "employee-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie = "auth_type=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        console.log('API: Cleared all session cookies due to authentication error');
+      }
+    }
+    
+    // Check if this is a session expired error
+    if (data.error && (
+      data.error.includes('expired') || 
+      data.error.includes('Session not found') ||
+      data.error.includes('Not authenticated')
+    )) {
+      throw new Error('Session expired');
     }
     
     throw new Error(data.error || 'An error occurred while fetching the data');
   }
   
   return data as T;
+}
+
+// Helper function to refresh the session
+async function refreshSession(): Promise<boolean> {
+  try {
+    // Determine which auth type to refresh
+    let authType = 'user';
+    if (typeof localStorage !== 'undefined') {
+      authType = localStorage.getItem('authType') || 'user';
+    } else if (typeof document !== 'undefined') {
+      // Check cookies if localStorage is not available
+      authType = document.cookie.includes('employee-session') ? 'employee' : 'user';
+    }
+    
+    console.log('API: Refreshing session for auth type:', authType);
+    
+    if (authType === 'employee') {
+      // Refresh employee session
+      const response = await fetch('/api/auth/employee', {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        console.warn('API: Failed to refresh employee session, status:', response.status);
+        return false;
+      }
+      
+      console.log('API: Employee session refreshed successfully');
+      return true;
+    } else {
+      // Refresh standard user session
+      const response = await fetch('/api/auth', {
+        method: 'GET',
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        console.warn('API: Failed to refresh user session, status:', response.status);
+        return false;
+      }
+      
+      console.log('API: User session refreshed successfully');
+      return true;
+    }
+  } catch (error) {
+    console.error('API: Error refreshing session:', error);
+    return false;
+  }
 }
 
 // Authentication API functions
