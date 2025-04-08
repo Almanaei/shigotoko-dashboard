@@ -90,29 +90,13 @@ export default function SettingsPage() {
       return;
     }
     
-    // Prevent multiple rapid calls
-    const lastFetchTime = localStorage.getItem('settings_last_fetch');
-    const now = Date.now();
-    
-    if (lastFetchTime && now - parseInt(lastFetchTime) < 2000) {
-      console.log('Settings page: Skipping fetch - too soon since last attempt');
-      // Use existing data if we have it
-      if (currentUser) {
-        setProfileForm({
-          name: currentUser.name,
-          email: currentUser.email,
-          role: currentUser.role || 'employee',
-          avatar: currentUser.avatar || '',
-        });
-        setIsLoading(false);
-      }
-      return;
-    }
-    
-    // Update last fetch timestamp
-    localStorage.setItem('settings_last_fetch', now.toString());
+    // Use a flag to ensure we only fetch once per component mount
+    const isMounted = { current: true };
     
     const fetchCurrentUser = async () => {
+      // Don't proceed if component unmounted during async operation
+      if (!isMounted.current) return;
+      
       setIsLoading(true);
       setError('');
       
@@ -144,6 +128,9 @@ export default function SettingsPage() {
           allCookies: document.cookie.split(';').map(c => c.trim().split('=')[0])
         });
         
+        // Bail if component unmounted during async operation
+        if (!isMounted.current) return;
+        
         let userData = null;
         
         // If we already have currentUser data in the dashboard state, use that to avoid a reload loop
@@ -158,6 +145,9 @@ export default function SettingsPage() {
             console.log('Settings page: Trying standard user auth first...');
             try {
               userData = await API.auth.getCurrentUser();
+              
+              // Bail if component unmounted during async operation
+              if (!isMounted.current) return;
               
               if (userData) {
                 console.log('Settings page: Retrieved user data from standard auth:', userData);
@@ -181,6 +171,9 @@ export default function SettingsPage() {
                 credentials: 'include', // Include cookies for authentication
               });
               
+              // Bail if component unmounted during async operation
+              if (!isMounted.current) return;
+              
               if (employeeResponse.ok) {
                 userData = await employeeResponse.json();
                 console.log('Settings page: Retrieved employee data:', userData);
@@ -196,6 +189,9 @@ export default function SettingsPage() {
           }
         }
         
+        // Final check if component still mounted
+        if (!isMounted.current) return;
+        
         if (userData) {
           console.log('Settings page: Retrieved user/employee data:', userData);
           
@@ -208,46 +204,51 @@ export default function SettingsPage() {
           }
           
           // Update form with user data
-          setProfileForm({
-            name: userData.name,
-            email: userData.email,
-            role: userData.role || 'employee', // Default to 'employee' if no role provided
-            avatar: userData.avatar || '',
+          setProfileForm(prev => {
+            // Only update if values actually changed
+            if (
+              prev.name === userData.name && 
+              prev.email === userData.email && 
+              prev.role === (userData.role || 'employee') &&
+              prev.avatar === (userData.avatar || '')
+            ) {
+              return prev; // No changes needed
+            }
+            
+            // Return updated form data
+            return {
+              name: userData.name,
+              email: userData.email,
+              role: userData.role || 'employee',
+              avatar: userData.avatar || '',
+            };
           });
         } else {
           console.log('Settings page: No user/employee data returned from API');
           setError('Could not retrieve user data. Please try again.');
         }
       } catch (error) {
+        // Bail if component unmounted during async operation
+        if (!isMounted.current) return;
+        
         console.error('Settings page: Error fetching user data:', error);
         setError('Error loading profile. Please check your connection and try again.');
       } finally {
-        setIsLoading(false);
+        // Only update loading state if component still mounted
+        if (isMounted.current) {
+          setIsLoading(false);
+        }
       }
     };
     
+    // Kick off the fetch
     fetchCurrentUser();
-  }, [dispatch]); // Remove currentUser from dependencies
-  
-  // Update form if currentUser changes
-  useEffect(() => {
-    if (currentUser && !isLoading) {
-      // Only update form if necessary to prevent infinite updates
-      if (
-        profileForm.name !== currentUser.name ||
-        profileForm.email !== currentUser.email ||
-        profileForm.role !== currentUser.role
-      ) {
-        console.log('Settings page: Updating form with current user data:', currentUser);
-        setProfileForm({
-          name: currentUser.name,
-          email: currentUser.email,
-          role: currentUser.role || 'employee',
-          avatar: currentUser.avatar || '',
-        });
-      }
-    }
-  }, [currentUser, isLoading, profileForm.name, profileForm.email, profileForm.role]);
+    
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted.current = false;
+    };
+  }, [dispatch, currentUser?.id]); // Only re-run if dispatch or currentUser ID changes
   
   // Handle profile form submission
   const handleProfileSubmit = async (e: React.FormEvent) => {
@@ -546,7 +547,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <Layout>
+    <Layout key="settings-page">
       <div className="p-6 max-w-5xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Settings</h1>
         
