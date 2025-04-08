@@ -36,6 +36,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
   return withErrorHandling(async () => {
     const body = await request.json();
     
+    console.log(`Employee API: Update request for ID: ${id}`, {
+      fields: Object.keys(body),
+      hasAvatar: !!body.avatar,
+      avatarType: body.avatar ? (
+        body.avatar.startsWith('data:') ? 'data:URL' : 
+        body.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+      ) : 'None',
+      avatarLength: body.avatar ? body.avatar.length : 0
+    });
+    
     // Check if employee exists
     const existingEmployee = await prisma.employee.findUnique({
       where: { id },
@@ -50,6 +60,22 @@ export async function PUT(request: NextRequest, { params }: Params) {
     const isDepartmentChanged = body.departmentId && 
       existingEmployee.departmentId !== body.departmentId;
     
+    // Process and validate avatar if present
+    let avatarToSave = body.avatar;
+    if (body.avatar && body.avatar.startsWith('data:image/')) {
+      // Avatar is valid data URL
+      console.log('Employee API: Processing image data URL for avatar');
+      
+      // If exceptionally large, we might reject or compress further
+      if (body.avatar.length > 1000000) {  // 1MB
+        console.log('Employee API: Avatar is exceptionally large, may reject');
+      }
+    } else if (body.avatar) {
+      console.log('Employee API: Avatar is not a data URL, accepted as is');
+    } else {
+      console.log('Employee API: No avatar in request');
+    }
+    
     // Update employee
     const updatedEmployee = await prisma.employee.update({
       where: { id },
@@ -59,7 +85,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         departmentId: body.departmentId !== undefined ? body.departmentId : undefined,
         email: body.email !== undefined ? body.email : undefined,
         phone: body.phone !== undefined ? body.phone : undefined,
-        avatar: body.avatar !== undefined ? body.avatar : undefined,
+        avatar: avatarToSave !== undefined ? avatarToSave : undefined,
         status: body.status !== undefined ? body.status : undefined,
         joinDate: body.joinDate !== undefined ? new Date(body.joinDate) : undefined,
         performance: body.performance !== undefined ? body.performance : undefined,
@@ -67,6 +93,16 @@ export async function PUT(request: NextRequest, { params }: Params) {
       include: {
         department: true,
       },
+    });
+    
+    console.log(`Employee API: Update successful for ID: ${id}`, {
+      name: updatedEmployee.name,
+      hasAvatar: !!updatedEmployee.avatar,
+      avatarType: updatedEmployee.avatar ? (
+        updatedEmployee.avatar.startsWith('data:') ? 'data:URL' : 
+        updatedEmployee.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+      ) : 'None',
+      avatarLength: updatedEmployee.avatar ? updatedEmployee.avatar.length : 0
     });
     
     // Update department employee counts if department was changed

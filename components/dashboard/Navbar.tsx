@@ -16,6 +16,10 @@ export default function Navbar() {
   const router = useRouter();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   
+  // Add state to track avatar refresh attempts
+  const [avatarRefreshAttempt, setAvatarRefreshAttempt] = useState(0);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  
   // Debug logging
   useEffect(() => {
     console.log('Current user in Navbar:', currentUser);
@@ -25,8 +29,116 @@ export default function Navbar() {
         currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other',
         'Length:', currentUser.avatar.length
       );
+    } else {
+      console.log('No avatar found in currentUser');
     }
   }, [currentUser]);
+  
+  // Add effect to fetch the latest user profile data including avatar
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        // Only fetch if we have a currentUser but need to refresh their data
+        if (currentUser && currentUser.id) {
+          console.log('Fetching latest user profile data for Navbar avatar refresh');
+          
+          // Get auth type from localStorage
+          const authType = localStorage.getItem('authType') || 'user';
+          
+          let profile;
+          if (authType === 'employee') {
+            // For employee type users
+            console.log('Navbar: Fetching employee profile data');
+            try {
+              const response = await fetch(`/api/employees/${currentUser.id}`, {
+                credentials: 'include',
+                headers: {
+                  'Cache-Control': 'no-cache',
+                  'Pragma': 'no-cache',
+                },
+              });
+              
+              if (response.ok) {
+                profile = await response.json();
+                console.log('Navbar: Got employee data from API:', profile ? {
+                  name: profile.name,
+                  id: profile.id,
+                  hasAvatar: !!profile.avatar,
+                  avatarType: profile.avatar ? (
+                    profile.avatar.startsWith('data:') ? 'data:URL' : 
+                    profile.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+                  ) : 'None',
+                  avatarPreview: profile.avatar ? profile.avatar.substring(0, 50) + '...' : 'None'
+                } : 'No profile data');
+              } else {
+                console.log('Navbar: Failed to fetch employee data, status:', response.status);
+                setAvatarError(`Employee fetch failed: ${response.status}`);
+              }
+            } catch (error) {
+              console.error('Navbar: Error fetching employee profile:', error);
+              setAvatarError('Employee API error');
+            }
+          } else {
+            // For regular user type
+            console.log('Navbar: Fetching user profile data');
+            try {
+              profile = await API.auth.getProfile();
+              console.log('Navbar: Got user data from API:', profile ? {
+                name: profile.name,
+                id: profile.id,
+                hasAvatar: !!profile.avatar,
+                avatarType: profile.avatar ? (
+                  profile.avatar.startsWith('data:') ? 'data:URL' : 
+                  profile.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+                ) : 'None',
+                avatarPreview: profile.avatar ? profile.avatar.substring(0, 50) + '...' : 'None'
+              } : 'No profile data');
+            } catch (error) {
+              console.error('Navbar: Error fetching user profile:', error);
+              setAvatarError('User API error');
+            }
+          }
+          
+          // If we got updated profile data, update the current user in the dashboard state
+          if (profile) {
+            // Try to restore avatar from localStorage if missing in the API response
+            if (!profile.avatar) {
+              const storedAvatar = localStorage.getItem('userAvatar');
+              if (storedAvatar) {
+                console.log('Navbar: Restoring avatar from localStorage');
+                profile.avatar = storedAvatar;
+              }
+            }
+            
+            dispatch({
+              type: ACTIONS.SET_CURRENT_USER,
+              payload: profile
+            });
+            
+            // Clear any previous avatar error
+            setAvatarError(null);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user profile for avatar:', error);
+        setAvatarError('Profile fetch error');
+      }
+    };
+    
+    fetchUserProfile();
+    
+    // Add listener for avatar updates from other components
+    const handleAvatarUpdate = () => {
+      console.log('Navbar: Detected avatar update event, refreshing profile');
+      setAvatarRefreshAttempt(prev => prev + 1);
+    };
+    
+    window.addEventListener('avatarUpdated', handleAvatarUpdate);
+    
+    return () => {
+      window.removeEventListener('avatarUpdated', handleAvatarUpdate);
+    };
+  }, [currentUser?.id, dispatch, avatarRefreshAttempt]);
   
   // Safely try to use ThemeProvider
   let themeContext;
@@ -147,6 +259,75 @@ export default function Navbar() {
       document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       window.location.replace('/login');
     }
+  };
+
+  // User avatar renderer function
+  const renderUserAvatar = () => {
+    if (!currentUser) return null;
+    
+    if (currentUser.avatar) {
+      return (
+        <div className="relative h-8 w-8">
+          <img
+            className="h-8 w-8 rounded-full object-cover border border-gray-200 dark:border-gray-700"
+            src={currentUser.avatar}
+            alt={currentUser.name}
+            onError={(e) => {
+              // If image fails to load, show initials instead and log debug info
+              console.error('Avatar image failed to load:', {
+                src: currentUser.avatar ? currentUser.avatar.substring(0, 50) + '...' : 'undefined',
+                type: currentUser.avatar ? (
+                  currentUser.avatar.startsWith('data:') ? 'data:URL' : 
+                  currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
+                ) : 'undefined',
+                length: currentUser.avatar ? currentUser.avatar.length : 0
+              });
+              
+              e.currentTarget.style.display = 'none';
+              const fallback = document.getElementById('avatar-fallback');
+              if (fallback) fallback.classList.remove('hidden');
+              
+              // Try refreshing the profile after a short delay (only once)
+              if (avatarRefreshAttempt === 0) {
+                setTimeout(() => {
+                  setAvatarRefreshAttempt(1);
+                }, 2000);
+              }
+            }}
+          />
+          <div 
+            id="avatar-fallback"
+            className="hidden absolute inset-0 h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium"
+          >
+            {currentUser.name
+              .split(' ')
+              .map(part => part.charAt(0))
+              .slice(0, 2)
+              .join('')
+              .toUpperCase()}
+          </div>
+          
+          {/* Display avatar error if any, shown only in development */}
+          {process.env.NODE_ENV === 'development' && avatarError && (
+            <div className="absolute top-full mt-1 right-0 text-xs bg-red-100 text-red-600 p-1 rounded whitespace-nowrap">
+              Avatar error: {avatarError}
+            </div>
+          )}
+        </div>
+      );
+    }
+    
+    // Default to initials if no avatar
+    return (
+      <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
+        {currentUser.name
+          .split(' ')
+          .map(part => part.charAt(0))
+          .slice(0, 2)
+          .join('')
+          .toUpperCase()}
+      </div>
+    );
   };
 
   // Inside the user menu dropdown, add a role update option if current user has Admin capability
@@ -332,22 +513,7 @@ export default function Navbar() {
               aria-haspopup="true"
             >
               <span className="sr-only">Open user menu</span>
-              {currentUser?.avatar && (currentUser.avatar.startsWith('http') || currentUser.avatar.startsWith('data:')) ? (
-                <img
-                  className="h-8 w-8 rounded-full object-cover"
-                  src={currentUser.avatar}
-                  alt={currentUser.name}
-                />
-              ) : (
-                <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
-                  {currentUser?.name
-                    .split(' ')
-                    .map(part => part.charAt(0))
-                    .slice(0, 2)
-                    .join('')
-                    .toUpperCase()}
-                </div>
-              )}
+              {renderUserAvatar()}
             </button>
           </div>
 

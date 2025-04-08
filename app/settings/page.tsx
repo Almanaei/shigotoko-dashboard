@@ -458,6 +458,9 @@ export default function SettingsPage() {
         // Show loading state
         setIsLoading(true);
         
+        console.log('Profile submit: Current avatar in form:', profileForm.avatar ? 
+          (profileForm.avatar.substring(0, 30) + '... [' + Math.round(profileForm.avatar.length / 1024) + ' KB]') : 'None');
+        
         // Double-check session validity before proceeding
         const sessionValid = await refreshAuthSession();
         if (!sessionValid) {
@@ -485,6 +488,11 @@ export default function SettingsPage() {
             (profileForm.avatar.startsWith('data:') || 
              profileForm.avatar.startsWith('http'))) {
           profileUpdate.avatar = profileForm.avatar;
+          console.log('Profile submit: Including avatar in update, type:', 
+            profileForm.avatar.startsWith('data:') ? 'data:URL' : 'HTTP URL', 
+            'length:', Math.round(profileForm.avatar.length / 1024), 'KB');
+        } else {
+          console.log('Profile submit: No avatar included in update');
         }
         
         // Log what we're sending
@@ -559,6 +567,14 @@ export default function SettingsPage() {
         if (authType === 'employee') {
           console.log('Settings page: Using Employee API for profile update');
           
+          // Log the data being sent to employee API
+          console.log('Employee API request:', {
+            name: profileUpdate.name,
+            email: profileUpdate.email,
+            hasAvatar: !!profileUpdate.avatar,
+            avatarPreview: profileUpdate.avatar ? profileUpdate.avatar.substring(0, 30) + '...' : 'None'
+          });
+          
           // Use Employee API endpoint directly
           const response = await fetch('/api/employees/' + currentUser.id, {
             method: 'PUT',
@@ -583,14 +599,34 @@ export default function SettingsPage() {
           
           if (!response.ok) {
             const errorData = await response.json();
+            console.error('Employee API error:', errorData);
             throw new Error(errorData.error || 'Failed to update employee profile');
           }
           
           updatedUser = await response.json();
+          console.log('Employee API response:', {
+            id: updatedUser.id,
+            name: updatedUser.name,
+            hasAvatar: !!updatedUser.avatar,
+            avatarPreview: updatedUser.avatar ? updatedUser.avatar.substring(0, 30) + '...' : 'None'
+          });
         } else {
           // Default to standard User API
           console.log('Settings page: Using standard User API for profile update');
+          console.log('User API request:', {
+            name: profileUpdate.name,
+            email: profileUpdate.email,
+            hasAvatar: !!profileUpdate.avatar,
+            avatarPreview: profileUpdate.avatar ? profileUpdate.avatar.substring(0, 30) + '...' : 'None'
+          });
+          
           updatedUser = await API.auth.updateProfile(profileUpdate);
+          console.log('User API response:', {
+            id: updatedUser.id,
+            name: updatedUser.name,
+            hasAvatar: !!updatedUser.avatar,
+            avatarPreview: updatedUser.avatar ? updatedUser.avatar.substring(0, 30) + '...' : 'None'
+          });
         }
         
         // Refresh the session again after the update to ensure we maintain authentication
@@ -601,6 +637,22 @@ export default function SettingsPage() {
           type: ACTIONS.SET_CURRENT_USER,
           payload: updatedUser
         });
+        
+        // Store the avatar in localStorage as backup to ensure it persists
+        if (updatedUser.avatar) {
+          try {
+            localStorage.setItem('userAvatar', updatedUser.avatar);
+            console.log('Settings page: Stored avatar in localStorage for backup');
+          } catch (storageError) {
+            console.error('Settings page: Failed to store avatar in localStorage (may be too large):', storageError);
+            
+            // If the avatar is too big for localStorage, store a flag indicating we have an avatar
+            localStorage.setItem('hasUserAvatar', 'true');
+          }
+        } else {
+          localStorage.removeItem('userAvatar');
+          localStorage.removeItem('hasUserAvatar');
+        }
         
         console.log('Settings page: Profile updated successfully:', {
           name: updatedUser.name,
@@ -614,6 +666,9 @@ export default function SettingsPage() {
         
         // Show success message
         showSuccessNotification('Profile updated successfully');
+        
+        // Force a re-render of components that use the avatar
+        window.dispatchEvent(new Event('avatarUpdated'));
       } catch (error: any) {
         console.error('Settings page: Error updating profile:', error);
         
@@ -791,6 +846,8 @@ export default function SettingsPage() {
       return;
     }
     
+    console.log('Avatar upload: Processing file:', file.name, file.type, Math.round(file.size / 1024), 'KB');
+    
     // Resize and compress the image
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -833,10 +890,11 @@ export default function SettingsPage() {
           avatar: dataUrl
         }));
         
-        console.log('Image resized and compressed:', {
+        console.log('Avatar upload: Image resized and compressed:', {
           originalSize: file.size,
-          resizedSize: dataUrl.length * 0.75, // Approximate size in bytes
-          dimensions: `${width}x${height}`
+          resizedSize: Math.round(dataUrl.length * 0.75 / 1024), // Approximate size in KB
+          dimensions: `${Math.round(width)}x${Math.round(height)}`,
+          dataUrlPreview: dataUrl.substring(0, 50) + '...' // Show beginning of data URL
         });
       };
       
