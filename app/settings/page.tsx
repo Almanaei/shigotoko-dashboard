@@ -669,6 +669,37 @@ export default function SettingsPage() {
         
         // Force a re-render of components that use the avatar
         window.dispatchEvent(new Event('avatarUpdated'));
+        
+        // Implement a more forceful avatar update approach
+        // 1. Immediately update localStorage
+        try {
+          if (updatedUser.avatar) {
+            localStorage.setItem('lastAvatarUpdate', Date.now().toString());
+            try {
+              // Only try to store the full avatar if it's not too big
+              if (updatedUser.avatar.length < 1024 * 1024) { // 1MB limit
+                localStorage.setItem('userAvatar', updatedUser.avatar);
+              }
+            } catch (e) {
+              console.log('Avatar too large for localStorage');
+            }
+          }
+        } catch (e) {
+          console.error('Error updating avatar in localStorage:', e);
+        }
+        
+        // 2. Force a hard navigation to refresh the navbar completely if needed
+        if (profileForm.avatar !== updatedUser.avatar) {
+          // If avatar was changed but doesn't match what we got back, we need to force a refresh
+          const currentPath = window.location.pathname;
+          
+          // Slight delay to ensure the notification is seen
+          setTimeout(() => {
+            console.log('Avatar change detected, forcing page refresh');
+            // Use history.pushState to refresh the page without changing the URL
+            window.location.href = currentPath + '?t=' + Date.now();
+          }, 1500);
+        }
       } catch (error: any) {
         console.error('Settings page: Error updating profile:', error);
         
@@ -884,11 +915,22 @@ export default function SettingsPage() {
         // Convert to data URL with reduced quality
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         
+        // Pre-cache the avatar
+        const preloadImg = new Image();
+        preloadImg.src = dataUrl;
+        
         // Update profile form with resized image
         setProfileForm(prev => ({
           ...prev,
           avatar: dataUrl
         }));
+        
+        // Immediately store in localStorage for faster access by navbar
+        try {
+          localStorage.setItem('tempAvatarPreview', dataUrl);
+        } catch (e) {
+          console.error('Failed to store temp avatar in localStorage', e);
+        }
         
         console.log('Avatar upload: Image resized and compressed:', {
           originalSize: file.size,

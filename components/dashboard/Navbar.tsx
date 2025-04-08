@@ -477,33 +477,111 @@ export default function Navbar() {
     </div>
   ) : null;
 
-  // Add a useEffect hook to fix missing avatars after initial page load
+  // Add more aggressive avatar recovery effect
   useEffect(() => {
-    // This hook handles recovering avatars in case they're not loaded properly
-    if (currentUser && !currentUser.avatar) {
-      // Check if we have a stored avatar in localStorage that we can use
-      const storedAvatar = localStorage.getItem('userAvatar');
-      const hasStoredAvatarFlag = localStorage.getItem('hasUserAvatar');
+    if (typeof window === 'undefined') return;
+    
+    // Check for last avatar update timestamp
+    const lastUpdate = localStorage.getItem('lastAvatarUpdate');
+    const now = Date.now();
+    
+    // If we have a current user without avatar or with an outdated one
+    if (currentUser && (!currentUser.avatar || (lastUpdate && parseInt(lastUpdate) > now - 60000))) {
+      // First try the temp preview (for immediate feedback while saving)
+      const tempPreview = localStorage.getItem('tempAvatarPreview');
+      if (tempPreview) {
+        console.log('Navbar: Found temporary avatar preview, applying it');
+        dispatch({
+          type: ACTIONS.SET_CURRENT_USER,
+          payload: {
+            ...currentUser,
+            avatar: tempPreview
+          }
+        });
+        return;
+      }
       
-      if (storedAvatar || hasStoredAvatarFlag) {
-        console.log('Navbar: Found avatar in localStorage but missing in currentUser, applying it');
+      // Then try the stored avatar
+      const storedAvatar = localStorage.getItem('userAvatar');
+      if (storedAvatar) {
+        console.log('Navbar: Found stored avatar in localStorage, applying it');
+        dispatch({
+          type: ACTIONS.SET_CURRENT_USER,
+          payload: {
+            ...currentUser,
+            avatar: storedAvatar
+          }
+        });
+      }
+    }
+  }, [currentUser, dispatch]);
+
+  // Add event listener to detect avatar updates from other tabs or components
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (!currentUser) return;
+      
+      // If avatar related storage changes, refresh the current user
+      if (e.key === 'userAvatar' || e.key === 'tempAvatarPreview' || e.key === 'lastAvatarUpdate') {
+        console.log('Navbar: Detected avatar update in localStorage');
         
-        // If we have the actual avatar data, use it
-        if (storedAvatar) {
+        // Get the latest avatar
+        const avatar = localStorage.getItem('userAvatar') || 
+                       localStorage.getItem('tempAvatarPreview') || 
+                       currentUser.avatar;
+        
+        if (avatar && avatar !== currentUser.avatar) {
+          console.log('Navbar: Updating avatar from localStorage change');
           dispatch({
             type: ACTIONS.SET_CURRENT_USER,
             payload: {
               ...currentUser,
-              avatar: storedAvatar
+              avatar
             }
           });
-        } else {
-          // Otherwise, trigger a refresh to fetch it from the API
-          console.log('Navbar: Has avatar flag is true but no actual avatar data, refreshing profile');
-          setAvatarRefreshAttempt(prev => prev + 1);
         }
       }
-    }
+    };
+    
+    window.addEventListener('storage', handleStorage);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [currentUser, dispatch]);
+
+  // Handle avatarUpdated event with special force refresh
+  useEffect(() => {
+    const forceRefreshAvatar = () => {
+      if (!currentUser) return;
+      
+      // Immediately try to fetch current user profile
+      console.log('Navbar: Force refreshing avatar after update event');
+      
+      // First try localStorage (fastest)
+      const storedAvatar = localStorage.getItem('userAvatar') || 
+                           localStorage.getItem('tempAvatarPreview');
+      
+      if (storedAvatar && storedAvatar !== currentUser.avatar) {
+        console.log('Navbar: Using stored avatar from localStorage');
+        dispatch({
+          type: ACTIONS.SET_CURRENT_USER,
+          payload: {
+            ...currentUser,
+            avatar: storedAvatar
+          }
+        });
+      } else {
+        // If no localStorage avatar, force a refresh attempt
+        setAvatarRefreshAttempt(prev => prev + 1);
+      }
+    };
+    
+    window.addEventListener('avatarUpdated', forceRefreshAvatar);
+    
+    return () => {
+      window.removeEventListener('avatarUpdated', forceRefreshAvatar);
+    };
   }, [currentUser, dispatch]);
 
   // Add event listener to safely track avatar failures without triggering Next.js error systems
