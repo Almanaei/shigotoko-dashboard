@@ -85,26 +85,132 @@ export default function SettingsPage() {
   // Function to refresh authentication sessions
   const refreshAuthSession = async () => {
     try {
-      const authType = localStorage.getItem('authType') || 'user';
+      // Determine auth type more comprehensively
+      let authType = 'user';
       
-      if (authType === 'employee') {
-        // Refresh employee session
-        await fetch('/api/auth/employee', {
-          method: 'GET',
-          credentials: 'include'
-        });
-      } else {
-        // Refresh user session
-        await API.auth.getCurrentUser();
+      // Check localStorage first
+      if (typeof localStorage !== 'undefined') {
+        const storedAuthType = localStorage.getItem('authType');
+        if (storedAuthType) {
+          authType = storedAuthType;
+        }
       }
       
-      // Also refresh cookies
-      await fetch('/api/auth/set-cookies?type=' + authType, {
-        credentials: 'include'
-      });
+      // Then check cookies as a fallback
+      if (typeof document !== 'undefined') {
+        const hasEmployeeSession = document.cookie.split(';').some(c => 
+          c.trim().startsWith('employee-session='));
+        
+        const hasUserSession = document.cookie.split(';').some(c => 
+          c.trim().startsWith('session-token=') || c.trim().startsWith('session_token='));
+        
+        // Cookie detection overrides localStorage if present
+        if (hasEmployeeSession) {
+          authType = 'employee';
+          localStorage.setItem('authType', 'employee');
+        } else if (hasUserSession) {
+          authType = 'user';
+          localStorage.setItem('authType', 'user');
+        }
+      }
       
-      console.log('Settings page: Session refreshed for', authType);
-      return true;
+      console.log('Settings page: Refreshing session for auth type:', authType);
+      
+      if (authType === 'employee') {
+        // Refresh employee session with direct fetch to ensure cookies are updated
+        const response = await fetch('/api/auth/employee', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store', // Prevent caching
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        });
+        
+        if (response.ok) {
+          console.log('Settings page: Employee session refreshed successfully');
+          
+          // Also explicitly refresh cookies
+          await fetch('/api/auth/set-cookies?type=employee', {
+            credentials: 'include'
+          });
+          
+          return true;
+        } else {
+          console.log('Settings page: Employee session refresh failed, trying recovery...');
+          
+          // Try recovery as a last resort
+          const recoveryResponse = await fetch('/api/auth/set-cookies?type=employee&action=recover', {
+            credentials: 'include'
+          });
+          
+          if (recoveryResponse.ok) {
+            console.log('Settings page: Employee session recovery attempted');
+            
+            // Try one more time to verify authentication
+            const verifyResponse = await fetch('/api/auth/check', {
+              credentials: 'include'
+            });
+            
+            if (verifyResponse.ok) {
+              const data = await verifyResponse.json();
+              if (data.status === 'authenticated') {
+                console.log('Settings page: Employee session successfully recovered');
+                return true;
+              }
+            }
+          }
+          
+          console.warn('Settings page: Employee session recovery failed');
+          return false;
+        }
+      } else {
+        // Standard user auth refresh
+        try {
+          // Try direct API call first
+          const user = await API.auth.getCurrentUser();
+          
+          if (user) {
+            console.log('Settings page: User session refreshed successfully via API');
+            
+            // Also explicitly refresh cookies
+            await fetch('/api/auth/set-cookies?type=user', {
+              credentials: 'include'
+            });
+            
+            return true;
+          }
+          
+          // If that fails, try recovery
+          console.log('Settings page: User session refresh failed, trying recovery...');
+          
+          const recoveryResponse = await fetch('/api/auth/set-cookies?type=user&action=recover', {
+            credentials: 'include'
+          });
+          
+          if (recoveryResponse.ok) {
+            // Try direct verification
+            const verifyResponse = await fetch('/api/auth/check', {
+              credentials: 'include'
+            });
+            
+            if (verifyResponse.ok) {
+              const data = await verifyResponse.json();
+              if (data.status === 'authenticated') {
+                console.log('Settings page: User session successfully recovered');
+                return true;
+              }
+            }
+          }
+          
+          console.warn('Settings page: User session recovery failed');
+          return false;
+        } catch (error) {
+          console.error('Settings page: Error during user session refresh:', error);
+          return false;
+        }
+      }
     } catch (error) {
       console.error('Settings page: Error refreshing session:', error);
       return false;
@@ -121,11 +227,11 @@ export default function SettingsPage() {
     // Initial refresh
     refreshAuthSession();
     
-    // Set up periodic refresh (every 10 minutes)
+    // Set up periodic refresh (every 3 minutes)
     const refreshInterval = setInterval(() => {
       console.log('Settings page: Performing periodic session refresh');
       refreshAuthSession();
-    }, 10 * 60 * 1000); // 10 minutes
+    }, 3 * 60 * 1000); // 3 minutes
     
     return () => clearInterval(refreshInterval);
   }, []);
@@ -297,6 +403,50 @@ export default function SettingsPage() {
       isMounted.current = false;
     };
   }, [dispatch, currentUser?.id]); // Only re-run if dispatch or currentUser ID changes
+  
+  // Add cross-tab heartbeat mechanism to keep sessions alive across tabs
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.top !== window.self) {
+      return; // Skip in server-side rendering or iframes
+    }
+    
+    // Check last heartbeat time in localStorage
+    const checkHeartbeat = () => {
+      try {
+        const lastHeartbeat = localStorage.getItem('session_last_heartbeat');
+        const now = Date.now();
+        
+        if (!lastHeartbeat || now - parseInt(lastHeartbeat) > 60000) { // 1 minute
+          // Time to refresh the session
+          console.log('Settings page: Session heartbeat triggered');
+          refreshAuthSession();
+          localStorage.setItem('session_last_heartbeat', now.toString());
+        }
+      } catch (error) {
+        console.error('Settings page: Error in heartbeat check:', error);
+      }
+    };
+    
+    // Set initial heartbeat
+    localStorage.setItem('session_last_heartbeat', Date.now().toString());
+    
+    // Check heartbeat every 30 seconds
+    const heartbeatInterval = setInterval(checkHeartbeat, 30000);
+    
+    // Listen for storage events from other tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'session_last_heartbeat') {
+        console.log('Settings page: Detected heartbeat from another tab');
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
   
   // Handle profile form submission
   const handleProfileSubmit = async (e: React.FormEvent) => {
@@ -481,13 +631,85 @@ export default function SettingsPage() {
           errorMessage = 'Network error. Please check your connection and try again.';
         } else if (error.message?.includes('timeout')) {
           errorMessage = 'Request timed out. The avatar may be too large.';
-        } else if (error.message?.includes('expired') || error.message?.includes('Unauthorized')) {
-          errorMessage = 'Your session has expired. Refreshing the page to restore your session...';
+        } else if (error.message?.includes('expired') || error.message?.includes('Unauthorized') || error.message === 'Session expired') {
+          errorMessage = 'Your session has expired. Attempting emergency session recovery...';
           
-          // If session expired, attempt to refresh the session
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
+          // Special handling for session expiration - this is a critical error that requires a specific approach
+          try {
+            // 1. First try our recovery endpoint
+            console.log('Settings page: Attempting emergency session recovery...');
+            const authType = localStorage.getItem('authType') || 'user';
+            
+            // 2. Attempt to perform a full session refresh with our improved function
+            const refreshSuccess = await refreshAuthSession();
+            
+            if (refreshSuccess) {
+              console.log('Settings page: Session successfully recovered via refreshAuthSession');
+              setError('Session recovered! Retrying profile update...');
+              
+              // Slight delay before retry
+              setTimeout(() => {
+                handleProfileSubmit(new Event('submit') as any);
+              }, 1000);
+              return;
+            }
+            
+            // 3. If that failed, try the explicit recovery endpoint
+            await fetch(`/api/auth/set-cookies?type=${authType}&action=recover`, {
+              credentials: 'include',
+            });
+            
+            console.log('Settings page: Attempted recovery via set-cookies');
+            
+            // 4. Check if the recovery worked
+            setTimeout(async () => {
+              try {
+                // Try making a basic auth check to see if the recovery worked
+                const checkResponse = await fetch('/api/auth/check', {
+                  credentials: 'include',
+                });
+                
+                if (checkResponse.ok) {
+                  const data = await checkResponse.json();
+                  if (data.status === 'authenticated') {
+                    // Recovery successful! Try resubmitting the form
+                    console.log('Settings page: Session recovery successful, retrying profile update');
+                    setError('Session recovered successfully! Retrying profile update...');
+                    
+                    // Update localStorage with correct auth type based on recovered session
+                    if (data.diagnostics?.sessionCheck?.type) {
+                      localStorage.setItem('authType', data.diagnostics.sessionCheck.type);
+                    }
+                    
+                    // Slight delay before retry
+                    setTimeout(() => {
+                      handleProfileSubmit(new Event('submit') as any);
+                    }, 1000);
+                    return;
+                  }
+                }
+                
+                // If we get here, recovery failed
+                console.log('Settings page: Session recovery failed, redirecting to login');
+                setError('Session recovery failed. Redirecting to login page...');
+                
+                // Redirect to login page after a brief delay
+                setTimeout(() => {
+                  window.location.href = '/login';
+                }, 2000);
+              } catch (recoveryCheckError) {
+                console.error('Settings page: Error checking recovery status:', recoveryCheckError);
+                // Fallback to full page reload if all else fails
+                window.location.reload();
+              }
+            }, 500);
+          } catch (recoveryError) {
+            console.error('Settings page: Error during session recovery attempt:', recoveryError);
+            // Fallback to standard page reload
+            setTimeout(() => {
+              window.location.reload();
+            }, 2000);
+          }
         }
         
         setError(errorMessage);
