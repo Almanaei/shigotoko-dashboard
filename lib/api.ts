@@ -4,6 +4,16 @@ import { User } from '@/lib/DashboardProvider';
 // Base URL for API requests
 const API_BASE_URL = '/api';
 
+// Message interface
+interface Message {
+  id: string;
+  content: string;
+  sender: string;
+  senderName: string;
+  timestamp: string;
+  senderAvatar?: string | null;
+}
+
 // Utility function for making API requests
 async function fetchAPI<T>(
   endpoint: string,
@@ -108,34 +118,93 @@ async function refreshSession(): Promise<boolean> {
     console.log('API: Refreshing session for auth type:', authType);
     
     if (authType === 'employee') {
-      // Refresh employee session
-      const response = await fetch('/api/auth/employee', {
-        method: 'GET',
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        console.warn('API: Failed to refresh employee session, status:', response.status);
-        return false;
+      // Special handling for employee session that may be expired
+      try {
+        // First try just a normal refresh
+        const response = await fetch('/api/auth/employee', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        
+        if (response.ok) {
+          console.log('API: Employee session refreshed successfully');
+          return true;
+        }
+        
+        // If that fails, we may need to recreate the session
+        console.log('API: Normal employee session refresh failed, attempting session recovery');
+        
+        // Try session recovery by visiting the specific auth recovery endpoint
+        const recoveryResponse = await fetch('/api/auth/set-cookies?type=employee&action=recover', {
+          credentials: 'include',
+        });
+        
+        if (recoveryResponse.ok) {
+          console.log('API: Employee session recovery successful');
+          // Try once more to refresh after recovery
+          const secondAttempt = await fetch('/api/auth/employee', {
+            method: 'GET',
+            credentials: 'include',
+          });
+          
+          if (secondAttempt.ok) {
+            console.log('API: Employee session fully restored');
+            return true;
+          }
+        }
+      } catch (employeeError) {
+        console.warn('API: Error during employee session refresh/recovery:', employeeError);
       }
       
-      console.log('API: Employee session refreshed successfully');
-      return true;
+      // As an absolute last resort, try to create a completely new session via login
+      // We would need stored credentials for this, which we probably don't have,
+      // but the page can handle this gracefully with a redirect
+      console.warn('API: Employee session could not be refreshed - session is fully expired');
+      return false;
     } else {
-      // Refresh standard user session
-      const response = await fetch('/api/auth', {
-        method: 'GET',
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        console.warn('API: Failed to refresh user session, status:', response.status);
+      // Standard user auth refresh
+      try {
+        const response = await fetch('/api/auth', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        
+        if (response.ok) {
+          console.log('API: User session refreshed successfully');
+          return true;
+        }
+        
+        // If normal refresh fails, try recovery
+        console.log('API: Normal user session refresh failed, attempting session recovery');
+        
+        // Try session recovery via the set-cookies endpoint
+        const recoveryResponse = await fetch('/api/auth/set-cookies?type=user&action=recover', {
+          credentials: 'include',
+        });
+        
+        if (recoveryResponse.ok) {
+          // Try one more API call after recovery
+          const secondAttempt = await fetch('/api/auth', {
+            method: 'GET',
+            credentials: 'include',
+          });
+          
+          if (secondAttempt.ok) {
+            console.log('API: User session fully restored after recovery');
+            return true;
+          }
+        }
+        
+        console.warn('API: User session could not be refreshed - session is fully expired');
+        return false;
+      } catch (userError) {
+        console.error('API: Error during user session refresh/recovery:', userError);
         return false;
       }
-      
-      console.log('API: User session refreshed successfully');
-      return true;
     }
+    
+    // If we reach here, all refresh attempts failed
+    return false;
   } catch (error) {
     console.error('API: Error refreshing session:', error);
     return false;
@@ -498,6 +567,45 @@ export const documentAPI = {
   },
 };
 
+// Messages API functions
+export const messagesAPI = {
+  // Get all messages with optional pagination
+  async getAll(limit: number = 50, page: number = 1): Promise<Message[]> {
+    const response = await fetchAPI<{messages: Message[]}>(`/messages?limit=${limit}&page=${page}`);
+    return response.messages || [];
+  },
+  
+  // Get messages after a specific timestamp
+  async getAfter(timestamp: string): Promise<Message[]> {
+    const response = await fetchAPI<{messages: Message[]}>(`/messages?after=${encodeURIComponent(timestamp)}`);
+    return response.messages || [];
+  },
+  
+  // Send a new message
+  async send(content: string): Promise<Message> {
+    return fetchAPI<Message>('/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content }),
+    });
+  },
+  
+  // Delete a message (admin or owner only)
+  async delete(messageId: string): Promise<boolean> {
+    try {
+      await fetchAPI(`/messages/${messageId}`, {
+        method: 'DELETE',
+      });
+      return true;
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      return false;
+    }
+  }
+};
+
 // Export all API services
 export const API = {
   auth: authAPI,
@@ -505,4 +613,7 @@ export const API = {
   departments: departmentAPI,
   projects: projectAPI,
   documents: documentAPI,
-}; 
+  messages: messagesAPI,
+};
+
+export default API; 

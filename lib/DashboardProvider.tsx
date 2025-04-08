@@ -153,6 +153,8 @@ export const ACTIONS = {
   SET_NOTIFICATIONS: 'SET_NOTIFICATIONS',
   SET_MESSAGES: 'SET_MESSAGES',
   ADD_MESSAGE: 'ADD_MESSAGE',
+  UPDATE_MESSAGE: 'UPDATE_MESSAGE',
+  REMOVE_MESSAGE: 'REMOVE_MESSAGE',
   SET_LOADING: 'SET_LOADING',
   SET_ERROR: 'SET_ERROR',
 } as const;
@@ -165,29 +167,31 @@ type Action =
   | { type: typeof ACTIONS.SET_CURRENT_USER; payload: User | null }
   | { type: typeof ACTIONS.SET_EMPLOYEES; payload: Employee[] }
   | { type: typeof ACTIONS.ADD_EMPLOYEE; payload: Employee }
-  | { type: typeof ACTIONS.UPDATE_EMPLOYEE; payload: { id: string; employee: Partial<Employee> } }
+  | { type: typeof ACTIONS.UPDATE_EMPLOYEE; payload: { id: string, employee: Partial<Employee> } }
   | { type: typeof ACTIONS.DELETE_EMPLOYEE; payload: string }
   | { type: typeof ACTIONS.SET_DEPARTMENTS; payload: Department[] }
   | { type: typeof ACTIONS.ADD_DEPARTMENT; payload: Department }
-  | { type: typeof ACTIONS.UPDATE_DEPARTMENT; payload: { id: string; department: Partial<Department> } }
+  | { type: typeof ACTIONS.UPDATE_DEPARTMENT; payload: { id: string, department: Partial<Department> } }
   | { type: typeof ACTIONS.DELETE_DEPARTMENT; payload: string }
   | { type: typeof ACTIONS.SET_PROJECTS; payload: Project[] }
   | { type: typeof ACTIONS.ADD_PROJECT; payload: Project }
-  | { type: typeof ACTIONS.UPDATE_PROJECT; payload: { id: string; project: Partial<Project> } }
+  | { type: typeof ACTIONS.UPDATE_PROJECT; payload: { id: string, project: Partial<Project> } }
   | { type: typeof ACTIONS.DELETE_PROJECT; payload: string }
   | { type: typeof ACTIONS.ADD_PROJECT_LOG; payload: ProjectLog }
   | { type: typeof ACTIONS.SET_DOCUMENTS; payload: Document[] }
   | { type: typeof ACTIONS.ADD_DOCUMENT; payload: Document }
-  | { type: typeof ACTIONS.UPDATE_DOCUMENT; payload: { id: string; document: Partial<Document> } }
+  | { type: typeof ACTIONS.UPDATE_DOCUMENT; payload: { id: string, document: Partial<Document> } }
   | { type: typeof ACTIONS.DELETE_DOCUMENT; payload: string }
   | { type: typeof ACTIONS.SET_TASKS; payload: Task[] }
   | { type: typeof ACTIONS.ADD_TASK; payload: Task }
-  | { type: typeof ACTIONS.UPDATE_TASK; payload: { id: string; task: Partial<Task> } }
+  | { type: typeof ACTIONS.UPDATE_TASK; payload: { id: string, task: Partial<Task> } }
   | { type: typeof ACTIONS.DELETE_TASK; payload: string }
   | { type: typeof ACTIONS.SET_STATS; payload: Stats }
   | { type: typeof ACTIONS.SET_NOTIFICATIONS; payload: Notification[] }
   | { type: typeof ACTIONS.SET_MESSAGES; payload: Message[] }
   | { type: typeof ACTIONS.ADD_MESSAGE; payload: Message }
+  | { type: typeof ACTIONS.UPDATE_MESSAGE; payload: { oldId: string; message: Message } }
+  | { type: typeof ACTIONS.REMOVE_MESSAGE; payload: string }
   | { type: typeof ACTIONS.SET_LOADING; payload: boolean }
   | { type: typeof ACTIONS.SET_ERROR; payload: string | null };
 
@@ -330,6 +334,20 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return { ...state, messages: action.payload };
     case ACTIONS.ADD_MESSAGE:
       return { ...state, messages: [...state.messages, action.payload] };
+    case ACTIONS.UPDATE_MESSAGE: {
+      const { oldId, message } = action.payload;
+      return {
+        ...state,
+        messages: state.messages.map(msg => 
+          msg.id === oldId ? message : msg
+        )
+      };
+    }
+    case ACTIONS.REMOVE_MESSAGE:
+      return {
+        ...state,
+        messages: state.messages.filter(msg => msg.id !== action.payload)
+      };
     case ACTIONS.SET_LOADING:
       return { ...state, loading: action.payload };
     case ACTIONS.SET_ERROR:
@@ -555,7 +573,50 @@ async function initializeData(dispatch: DashboardDispatch) {
     
     dispatch({ type: ACTIONS.SET_STATS, payload: stats });
     
-    // For now, keep using mock data for notifications and messages
+    // Fetch real messages from API instead of using mock data
+    try {
+      const response = await fetch('/api/messages?limit=50');
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.messages && Array.isArray(data.messages)) {
+          // Format messages for our state
+          const formattedMessages = data.messages
+            .map((msg: any) => ({
+              id: msg.id,
+              content: msg.content,
+              sender: msg.sender,
+              senderName: msg.senderName || 'Unknown',
+              timestamp: msg.timestamp
+            }))
+            .sort((a: any, b: any) => 
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+            );
+          
+          dispatch({ 
+            type: ACTIONS.SET_MESSAGES, 
+            payload: formattedMessages 
+          });
+        }
+      } else {
+        console.error('Error fetching messages:', response.status);
+        // Fall back to empty messages array
+        dispatch({ 
+          type: ACTIONS.SET_MESSAGES, 
+          payload: [] 
+        });
+      }
+    } catch (messagesError) {
+      console.error('Error fetching messages:', messagesError);
+      // Fall back to empty messages array
+      dispatch({ 
+        type: ACTIONS.SET_MESSAGES, 
+        payload: [] 
+      });
+    }
+    
+    // For now, keep using mock data for notifications
     // TODO: Implement real API endpoints for these
     
     // Mock notifications
@@ -563,13 +624,6 @@ async function initializeData(dispatch: DashboardDispatch) {
     dispatch({ 
       type: ACTIONS.SET_NOTIFICATIONS, 
       payload: mockNotifications 
-    });
-    
-    // Mock messages
-    const mockMessages = generateMockMessages();
-    dispatch({ 
-      type: ACTIONS.SET_MESSAGES, 
-      payload: mockMessages 
     });
     
   } catch (error) {
@@ -618,46 +672,6 @@ function generateMockNotifications(): Notification[] {
       type: 'update',
       read: false,
       timestamp: new Date(Date.now() - 7200000).toISOString()
-    }
-  ];
-}
-
-// Generate mock messages
-function generateMockMessages(): Message[] {
-  // Define admin user reference for messages
-  const adminUser = {
-    id: 'user-1',
-    name: 'Admin User'
-  };
-
-  return [
-    {
-      id: 'msg-1',
-      content: 'Welcome to the team chat! Feel free to ask any questions.',
-      sender: 'emp-1', // Sarah Chen
-      senderName: 'Sarah Chen',
-      timestamp: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
-    },
-    {
-      id: 'msg-2',
-      content: 'Thanks! I need some help with the onboarding process.',
-      sender: adminUser.id,
-      senderName: adminUser.name,
-      timestamp: new Date(Date.now() - 3000000).toISOString() // 50 minutes ago
-    },
-    {
-      id: 'msg-3',
-      content: 'Sure, I can help with that. What specific part of the onboarding process do you need assistance with?',
-      sender: 'emp-1', // Sarah Chen
-      senderName: 'Sarah Chen',
-      timestamp: new Date(Date.now() - 2700000).toISOString() // 45 minutes ago
-    },
-    {
-      id: 'msg-4',
-      content: 'I just added some new design mockups to the shared folder. Can everyone take a look when you get a chance?',
-      sender: 'emp-2', // John Smith
-      senderName: 'John Smith',
-      timestamp: new Date(Date.now() - 1800000).toISOString() // 30 minutes ago
     }
   ];
 }

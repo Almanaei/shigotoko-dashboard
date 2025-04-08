@@ -5,16 +5,40 @@ import { useState, useRef, useEffect } from 'react';
 import { useDashboard } from '@/lib/DashboardProvider';
 import { formatDistanceToNow } from 'date-fns';
 import { ACTIONS } from '@/lib/DashboardProvider';
+import API from '@/lib/api';
+
+// Define types for message handling
+interface MessageData {
+  id: string;
+  content: string;
+  sender: string;
+  senderName: string;
+  timestamp: string;
+}
 
 export default function Chat() {
   const { state, dispatch } = useDashboard();
   const { messages, currentUser, employees } = state;
   const [newMessage, setNewMessage] = useState('');
-  const [isTyping, setIsTyping] = useState<{[key: string]: boolean}>({});
-  const [simulatingResponse, setSimulatingResponse] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastFetchTime, setLastFetchTime] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
+  
+  // Use recent messages to determine last fetch time for polling
+  useEffect(() => {
+    if (messages.length > 0) {
+      // Find the most recent message timestamp
+      const sortedMessages = [...messages].sort((a, b) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      
+      setLastFetchTime(sortedMessages[0].timestamp);
+    }
+  }, [messages]);
   
   // Mock active users (in a real app, this would come from a backend/websocket)
   const activeUsers = [
@@ -43,151 +67,118 @@ export default function Chat() {
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
+  
+  // Poll for new messages
+  useEffect(() => {
+    // Set up polling for new messages every 10 seconds
+    const pollInterval = setInterval(() => {
+      if (lastFetchTime) {
+        fetchNewMessages();
+      }
+    }, 10000); // 10 seconds
+    
+    return () => clearInterval(pollInterval);
+  }, [lastFetchTime]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  // Simulate someone typing (for demo purposes)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Randomly have someone start typing
-      if (Math.random() > 0.9 && Object.keys(isTyping).length === 0 && !simulatingResponse) {
-        const randomUser = employees[Math.floor(Math.random() * employees.length)];
-        if (randomUser && randomUser.id !== currentUser?.id) {
-          setIsTyping(prev => ({ ...prev, [randomUser.id]: true }));
-          
-          // Simulate typing duration
-          setTimeout(() => {
-            setIsTyping(prev => {
-              const newState = { ...prev };
-              delete newState[randomUser.id];
-              
-              // 70% chance to actually send a message after typing
-              if (Math.random() > 0.3) {
-                const randomMessages = [
-                  "Has anyone looked at the Q2 projections yet?",
-                  "I just updated the project timeline in the schedule.",
-                  "Can someone review my latest design mockups?",
-                  "The client meeting went well today!",
-                  "Who's handling the deployment tomorrow?",
-                  "Just a reminder about the team meeting at 3pm.",
-                  "Great work on the latest release, team!",
-                  "I need help with the backend integration.",
-                  "Check out the updated documentation in the shared folder.",
-                  "Anyone available for a quick call?"
-                ];
-                
-                const message = {
-                  id: `msg-${Date.now()}`,
-                  content: randomMessages[Math.floor(Math.random() * randomMessages.length)],
-                  sender: randomUser.id,
-                  senderName: randomUser.name,
-                  timestamp: new Date().toISOString(),
-                };
-                
-                dispatch({
-                  type: ACTIONS.ADD_MESSAGE,
-                  payload: message
-                });
-              }
-              
-              return newState;
-            });
-          }, 2000 + Math.random() * 3000);
+  
+  // Function to fetch only new messages since last fetch
+  const fetchNewMessages = async () => {
+    if (!lastFetchTime) return;
+    
+    try {
+      // Use the API module
+      const newMessages = await API.messages.getAfter(lastFetchTime);
+      
+      if (newMessages.length > 0) {
+        // Sort messages by timestamp
+        const sortedMessages = newMessages
+          .map((msg): MessageData => ({
+            id: msg.id,
+            content: msg.content,
+            sender: msg.sender,
+            senderName: msg.senderName,
+            timestamp: msg.timestamp
+          }))
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        
+        // Update the timestamp of the latest message
+        if (sortedMessages.length > 0) {
+          setLastFetchTime(sortedMessages[sortedMessages.length - 1].timestamp);
         }
+        
+        // Add each new message to the state
+        sortedMessages.forEach(message => {
+          dispatch({
+            type: ACTIONS.ADD_MESSAGE,
+            payload: message
+          });
+        });
       }
-    }, 7000); // Check more frequently (every 7 seconds)
-
-    return () => clearInterval(interval);
-  }, [employees, currentUser, dispatch, isTyping, simulatingResponse]);
-
-  // Simulate responses to user messages
-  const simulateResponse = () => {
-    if (!currentUser) return;
-    
-    setSimulatingResponse(true);
-    
-    // Choose a random employee to respond
-    const respondingEmployee = employees[Math.floor(Math.random() * employees.length)];
-    if (!respondingEmployee) {
-      setSimulatingResponse(false);
-      return;
+    } catch (err) {
+      console.error("Error polling for new messages:", err);
+      // Don't show error for polling failures to avoid disrupting the user
     }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    // Show typing indicator for 1-3 seconds
-    setIsTyping(prev => ({ ...prev, [respondingEmployee.id]: true }));
+    if (newMessage.trim() === '' || !currentUser || sendingMessage) return;
     
-    setTimeout(() => {
-      setIsTyping(prev => {
-        const newState = { ...prev };
-        delete newState[respondingEmployee.id];
-        return newState;
-      });
+    try {
+      setSendingMessage(true);
       
-      // Choose response based on last message content
-      const lastMessage = messages[messages.length - 1]?.content.toLowerCase() || '';
-      let responseContent = '';
-      
-      if (lastMessage.includes('hello') || lastMessage.includes('hi') || lastMessage.includes('hey')) {
-        responseContent = `Hi there! How's your day going?`;
-      } else if (lastMessage.includes('project') || lastMessage.includes('work') || lastMessage.includes('task')) {
-        responseContent = `I just finished updating the project status. We're on track for the release next week!`;
-      } else if (lastMessage.includes('meeting') || lastMessage.includes('schedule')) {
-        responseContent = `The team meeting is scheduled for 2pm today. I'll send out the agenda shortly.`;
-      } else if (lastMessage.includes('help') || lastMessage.includes('support') || lastMessage.includes('issue')) {
-        responseContent = `What do you need help with? I'm available to assist with any issues you're facing.`;
-      } else {
-        const genericResponses = [
-          "Thanks for the update!",
-          "I'll take a look at this right away.",
-          "Great point. Let's discuss this further in our next meeting.",
-          "I appreciate your input on this matter.",
-          "Let me know if you need any assistance with that."
-        ];
-        responseContent = genericResponses[Math.floor(Math.random() * genericResponses.length)];
-      }
-      
-      const responseMessage = {
-        id: `msg-${Date.now()}`,
-        content: responseContent,
-        sender: respondingEmployee.id,
-        senderName: respondingEmployee.name,
+      // Optimistically add the message to the UI before API response
+      const tempMessage: MessageData = {
+        id: `temp-${Date.now()}`,
+        content: newMessage,
+        sender: currentUser.id,
+        senderName: currentUser.name,
         timestamp: new Date().toISOString(),
       };
       
       dispatch({
         type: ACTIONS.ADD_MESSAGE,
-        payload: responseMessage
+        payload: tempMessage
       });
       
-      setSimulatingResponse(false);
-    }, 1000 + Math.random() * 2000);
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (newMessage.trim() === '' || !currentUser) return;
-    
-    const message = {
-      id: `msg-${Date.now()}`,
-      content: newMessage,
-      sender: currentUser.id,
-      senderName: currentUser.name,
-      timestamp: new Date().toISOString(),
-    };
-    
-    dispatch({
-      type: ACTIONS.ADD_MESSAGE,
-      payload: message
-    });
-    
-    setNewMessage('');
-    
-    // 80% chance to get a simulated response
-    if (Math.random() > 0.2) {
-      setTimeout(simulateResponse, 500 + Math.random() * 1000);
+      // Clear the input
+      setNewMessage('');
+      
+      // Send the message using the API module
+      const savedMessage = await API.messages.send(tempMessage.content);
+      
+      // Replace the temporary message with the saved one
+      dispatch({
+        type: ACTIONS.UPDATE_MESSAGE,
+        payload: {
+          oldId: tempMessage.id,
+          message: {
+            id: savedMessage.id,
+            content: savedMessage.content,
+            sender: savedMessage.sender,
+            senderName: savedMessage.senderName,
+            timestamp: savedMessage.timestamp,
+          }
+        }
+      });
+      
+      // Update the last fetch time
+      setLastFetchTime(savedMessage.timestamp);
+      
+    } catch (err) {
+      console.error("Error sending message:", err);
+      setError("Failed to send message. Please try again.");
+      // Remove the temporary message if there was an error
+      dispatch({
+        type: ACTIONS.REMOVE_MESSAGE,
+        payload: `temp-${Date.now()}`
+      });
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -207,23 +198,6 @@ export default function Chat() {
 
   // Modify this function to better handle our updated Message interface
   const getSenderInfo = (senderId: string) => {
-    // Check if it's a legacy 'user' or 'assistant' type
-    if (senderId === 'user') {
-      return {
-        name: currentUser?.name || 'You',
-        avatar: currentUser?.avatar || '/avatar-placeholder.png',
-        isCurrentUser: true
-      };
-    }
-    
-    if (senderId === 'assistant') {
-      return {
-        name: 'Assistant',
-        avatar: '/avatars/assistant.png',
-        isCurrentUser: false
-      };
-    }
-    
     // Check if it's the current user
     if (currentUser && senderId === currentUser.id) {
       return {
@@ -243,9 +217,9 @@ export default function Chat() {
       };
     }
     
-    // Fallback to senderName from message or use unknown
+    // Fallback to generic identifier for the message sender
     return {
-      name: 'Unknown User',
+      name: 'Team Member',
       avatar: '/avatar-placeholder.png',
       isCurrentUser: false
     };
@@ -287,7 +261,7 @@ export default function Chat() {
   return (
     <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark flex flex-col h-full animate-slide-in">
       {/* Chat header */}
-      <div className="border-b border-gray-100 dark:border-dark-border p-3 flex justify-between items-center">
+      <div className="border-b border-gray-100 dark:border-dark-border px-4 py-3 flex items-center justify-between">
         <h2 className="text-sm font-medium text-gray-900 dark:text-white flex items-center">
           <MessagesSquare className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
           Team Chat • {activeUsers.length} online
@@ -320,8 +294,17 @@ export default function Chat() {
         className="flex-1 overflow-y-auto p-4 space-y-4 relative"
         style={{ minHeight: '300px', maxHeight: '400px' }}
       >
+        {/* Error state */}
+        {error && (
+          <div className="flex justify-center items-center">
+            <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-lg max-w-sm mb-4">
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
+        )}
+        
         {/* Welcome message if no messages */}
-        {messages.length === 0 && (
+        {messages.length === 0 && !isLoading && (
           <div className="flex justify-center items-center h-full">
             <div className="text-center p-6 max-w-sm">
               <div className="bg-blue-100 dark:bg-blue-900/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -336,161 +319,122 @@ export default function Chat() {
         )}
         
         {/* Chat messages */}
-        {messages.length > 0 && (
-          <div className="space-y-6">
-            {messageGroups.map((group, groupIndex) => (
-              <div key={group.date} className="space-y-4">
-                {/* Date separator */}
-                <div className="flex items-center justify-center">
-                  <div className="bg-gray-100 dark:bg-gray-800 text-xs text-gray-500 dark:text-gray-400 px-3 py-1 rounded-full">
-                    {new Date(group.date).toLocaleDateString(undefined, { 
-                      weekday: 'long', 
-                      month: 'short', 
-                      day: 'numeric' 
-                    })}
-                  </div>
-                </div>
-                
-                {/* Messages for this date */}
-                {group.messages.map((message, messageIndex) => {
-                  const senderInfo = getSenderInfo(message.sender);
-                  const isCurrentUser = senderInfo.isCurrentUser;
-                  
-                  // Check if we should show the avatar (first message of a group)
-                  const prevMessage = messageIndex > 0 ? group.messages[messageIndex - 1] : null;
-                  const showAvatar = !prevMessage || prevMessage.sender !== message.sender;
-                  
-                  return (
-                    <div 
-                      key={message.id} 
-                      className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} group`}
-                    >
-                      <div className="flex items-end max-w-[80%]">
-                        {/* Avatar for other users' messages */}
-                        {!isCurrentUser && showAvatar && (
-                          <div 
-                            className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2 mb-1 flex-shrink-0 overflow-hidden"
-                            style={{
-                              backgroundColor: message.sender.charCodeAt(0) % 2 === 0 ? '#3b82f6' : 
-                                           message.sender.charCodeAt(0) % 3 === 0 ? '#10b981' : 
-                                           message.sender.charCodeAt(0) % 5 === 0 ? '#8b5cf6' : '#f59e0b'
-                            }}
-                          >
-                            {senderInfo.avatar ? 
-                              <img src={senderInfo.avatar} alt={senderInfo.name} className="w-full h-full object-cover" /> :
-                              getInitials(senderInfo.name)
-                            }
-                          </div>
-                        )}
-                        
-                        {/* Message bubble */}
-                        <div 
-                          className={`${
-                            isCurrentUser 
-                              ? 'bg-blue-500 text-white rounded-tl-2xl rounded-tr-sm'
-                              : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tr-2xl rounded-tl-sm'
-                          } p-3 rounded-bl-2xl rounded-br-2xl shadow-sm hover:shadow-md transition-shadow`}
-                        >
-                          {showAvatar && (
-                            <div className="flex items-start mb-1">
-                              <span className="font-medium text-sm">
-                                {senderInfo.name}
-                              </span>
-                            </div>
-                          )}
-                          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
-                          <div className={`text-xs opacity-70 mt-1 text-right ${
-                            isCurrentUser ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
-                          }`}>
-                            {formatMessageTime(message.timestamp)}
-                          </div>
-                        </div>
-                        
-                        {/* Avatar for current user's messages */}
-                        {isCurrentUser && showAvatar && (
-                          <div className="h-8 w-8 rounded-full bg-gray-500 dark:bg-gray-600 flex items-center justify-center text-white text-xs ml-2 mb-1 flex-shrink-0 overflow-hidden">
-                            {currentUser?.avatar ? 
-                              <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" /> :
-                              getInitials(currentUser?.name || 'U')
-                            }
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
+        {messageGroups.map((group, groupIndex) => (
+          <div key={group.date} className="space-y-4">
+            {/* Date divider */}
+            <div className="flex items-center justify-center">
+              <div className="bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full text-xs text-gray-500 dark:text-gray-400 font-medium">
+                {new Date(group.date).toLocaleDateString(undefined, {
+                  weekday: 'long',
+                  month: 'short', 
+                  day: 'numeric'
                 })}
               </div>
-            ))}
+            </div>
             
-            {/* Typing indicators */}
-            {Object.entries(isTyping).map(([userId, isTyping]) => {
-              if (!isTyping) return null;
+            {/* Messages for this date */}
+            {group.messages.map((message, messageIndex) => {
+              const senderInfo = getSenderInfo(message.sender);
+              const isCurrentUser = senderInfo.isCurrentUser;
               
-              const typingUser = employees.find(emp => emp.id === userId);
-              if (!typingUser) return null;
+              // Determine if we should show the avatar (group messages by sender)
+              const showAvatar = 
+                messageIndex === 0 || 
+                messageIndex === group.messages.length - 1 ||
+                group.messages[messageIndex - 1].sender !== message.sender ||
+                // If more than 5 minutes between messages, break the grouping
+                (new Date(message.timestamp).getTime() - 
+                 new Date(group.messages[messageIndex - 1].timestamp).getTime() > 5 * 60 * 1000);
               
               return (
-                <div className="flex justify-start" key={`typing-${userId}`}>
-                  <div className="flex items-end">
+                <div 
+                  key={message.id} 
+                  className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'} group`}
+                >
+                  <div className="flex items-end max-w-[80%]">
+                    {/* Avatar for other users' messages */}
+                    {!isCurrentUser && showAvatar && (
+                      <div 
+                        className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2 mb-1 flex-shrink-0 overflow-hidden"
+                        style={{
+                          backgroundColor: message.sender.charCodeAt(0) % 2 === 0 ? '#3b82f6' : 
+                                       message.sender.charCodeAt(0) % 3 === 0 ? '#10b981' : 
+                                       message.sender.charCodeAt(0) % 5 === 0 ? '#8b5cf6' : '#f59e0b'
+                        }}
+                      >
+                        {senderInfo.avatar ? 
+                          <img src={senderInfo.avatar} alt={senderInfo.name} className="w-full h-full object-cover" /> :
+                          getInitials(senderInfo.name)
+                        }
+                      </div>
+                    )}
+                    
+                    {/* Message bubble */}
                     <div 
-                      className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs mr-2 flex-shrink-0 overflow-hidden"
-                      style={{
-                        backgroundColor: userId.charCodeAt(0) % 2 === 0 ? '#3b82f6' : 
-                                        userId.charCodeAt(0) % 3 === 0 ? '#10b981' : 
-                                        userId.charCodeAt(0) % 5 === 0 ? '#8b5cf6' : '#f59e0b'
-                      }}
+                      className={`${
+                        isCurrentUser 
+                          ? 'bg-blue-500 text-white rounded-tl-2xl rounded-tr-sm'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-tr-2xl rounded-tl-sm'
+                      } p-3 rounded-bl-2xl rounded-br-2xl shadow-sm hover:shadow-md transition-shadow`}
                     >
-                      {typingUser.avatar ? 
-                        <img src={typingUser.avatar} alt={typingUser.name} className="w-full h-full object-cover" /> :
-                        getInitials(typingUser.name)
-                      }
-                    </div>
-                    <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-tr-2xl rounded-bl-2xl rounded-br-2xl shadow-sm">
-                      <div className="flex flex-col">
-                        <div className="text-xs font-medium text-gray-800 dark:text-gray-200 mb-1">
-                          {typingUser.name}
+                      {showAvatar && (
+                        <div className="flex items-start mb-1">
+                          <span className="font-medium text-sm">
+                            {senderInfo.name}
+                          </span>
                         </div>
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '0ms'}}></div>
-                          <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '150ms'}}></div>
-                          <div className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" style={{animationDelay: '300ms'}}></div>
-                        </div>
+                      )}
+                      <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                      <div className={`text-xs opacity-70 mt-1 text-right ${
+                        isCurrentUser ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'
+                      }`}>
+                        {formatMessageTime(message.timestamp)}
                       </div>
                     </div>
+                    
+                    {/* Avatar for current user's messages */}
+                    {isCurrentUser && showAvatar && (
+                      <div className="h-8 w-8 rounded-full bg-gray-500 dark:bg-gray-600 flex items-center justify-center text-white text-xs ml-2 mb-1 flex-shrink-0 overflow-hidden">
+                        {currentUser?.avatar ? 
+                          <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" /> :
+                          getInitials(currentUser?.name || 'U')
+                        }
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
+        ))}
+        
+        {/* Loading indicator when sending message */}
+        {sendingMessage && (
+          <div className="flex justify-center my-2">
+            <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs px-3 py-1 rounded-full">
+              Sending message...
+            </div>
+          </div>
         )}
         
-        {/* Scroll to bottom indicator */}
+        {/* Scroll to bottom button */}
         {showScrollDownButton && (
           <button
             onClick={scrollToBottom}
-            className="absolute bottom-4 right-4 bg-blue-600 text-white rounded-full p-2 shadow-md hover:bg-blue-700 transition-all"
+            className="absolute bottom-4 right-4 bg-blue-500 text-white rounded-full p-2 shadow-md hover:bg-blue-600 transition-colors"
+            aria-label="Scroll to bottom"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 14l-7 7m0 0l-7-7m7 7V3"
-              />
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
           </button>
         )}
         
+        {/* Element to scroll to */}
         <div ref={messagesEndRef} />
       </div>
       
-      {/* Active users indicator - horizontal scrollable */}
+      {/* Online users */}
       <div className="border-t border-gray-100 dark:border-dark-border p-2 overflow-x-auto hide-scrollbar">
         <div className="flex space-x-2">
           {activeUsers.map(user => (
@@ -528,6 +472,7 @@ export default function Chat() {
             className="flex-1 py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-200"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
+            disabled={sendingMessage}
           />
           
           <button 
@@ -540,13 +485,13 @@ export default function Chat() {
           <button 
             type="submit"
             className={`inline-flex items-center justify-center p-2 rounded-lg shadow-sm text-white ${
-              newMessage.trim() === '' || simulatingResponse
+              newMessage.trim() === '' || sendingMessage
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800'
             }`}
-            disabled={newMessage.trim() === '' || simulatingResponse}
+            disabled={newMessage.trim() === '' || sendingMessage}
           >
-            {simulatingResponse ? (
+            {sendingMessage ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Send className="h-4 w-4" />
