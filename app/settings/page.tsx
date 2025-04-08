@@ -96,17 +96,46 @@ export default function SettingsPage() {
         const hasEmployeeCookie = document.cookie.split(';').some(c => 
           c.trim().startsWith('employee-session='));
         
-        console.log('Settings page: Auth cookies found:', { 
+        // Also check for auth_type cookie
+        const authTypeCookie = document.cookie.split(';').find(c => c.trim().startsWith('auth_type='));
+        const authTypeFromCookie = authTypeCookie ? authTypeCookie.split('=')[1] : null;
+        
+        // Check localStorage too
+        const authTypeFromStorage = localStorage.getItem('authType');
+        
+        // Determine auth type
+        const effectiveAuthType = authTypeFromCookie || authTypeFromStorage || 
+          (hasEmployeeCookie ? 'employee' : hasUserCookie ? 'user' : null);
+        
+        console.log('Settings page: Auth detection:', { 
           hasUserCookie, 
           hasEmployeeCookie,
+          authTypeFromCookie,
+          authTypeFromStorage, 
+          effectiveAuthType,
           allCookies: document.cookie.split(';').map(c => c.trim().split('=')[0])
         });
         
         let userData = null;
         
-        // Try Employee authentication first if that cookie exists
-        if (hasEmployeeCookie) {
-          console.log('Settings page: Employee session cookie found, trying employee auth...');
+        // Try standard User authentication first (more likely to work based on your logs)
+        if (hasUserCookie || effectiveAuthType === 'user') {
+          console.log('Settings page: Trying standard user auth first...');
+          try {
+            userData = await API.auth.getCurrentUser();
+            
+            if (userData) {
+              console.log('Settings page: Retrieved user data from standard auth:', userData);
+              localStorage.setItem('authType', 'user');
+            }
+          } catch (userAuthError) {
+            console.error('Settings page: Error during user auth:', userAuthError);
+          }
+        }
+        
+        // If User login failed, try Employee login
+        if (!userData && (hasEmployeeCookie || effectiveAuthType === 'employee')) {
+          console.log('Settings page: Trying employee auth...');
           
           try {
             const employeeResponse = await fetch('/api/auth/employee', {
@@ -125,27 +154,43 @@ export default function SettingsPage() {
               localStorage.setItem('authType', 'employee');
             } else {
               console.log('Settings page: Employee auth failed with status:', employeeResponse.status);
-              // Try clearing and re-applying the employee cookie
-              document.cookie = "employee-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
             }
           } catch (employeeError) {
             console.error('Settings page: Error fetching employee data:', employeeError);
           }
         }
         
-        // Try standard User authentication if employee auth failed or its cookie doesn't exist
-        if (!userData && hasUserCookie) {
-          console.log('Settings page: Trying standard user auth...');
-          userData = await API.auth.getCurrentUser();
+        // Last resort: Try API health check to see if API is working
+        if (!userData) {
+          try {
+            console.log('Settings page: Trying API health check as fallback...');
+            const healthCheck = await fetch('/api/auth/check', {
+              credentials: 'include',
+            });
+            
+            if (healthCheck.ok) {
+              const healthData = await healthCheck.json();
+              console.log('Settings page: API health check response:', healthData);
+              
+              // If the API returns a valid user from health check, use it
+              if (healthData.user) {
+                userData = healthData.user;
+                console.log('Settings page: Retrieved user from health check:', userData);
+              }
+            }
+          } catch (healthCheckError) {
+            console.error('Settings page: Health check failed:', healthCheckError);
+          }
           
-          if (userData) {
-            console.log('Settings page: Retrieved user data from standard auth:', userData);
-            localStorage.setItem('authType', 'user');
+          // If we still have no data, try to get the user directly from the dashboard state
+          if (!userData && currentUser) {
+            console.log('Settings page: Falling back to dashboard state user:', currentUser);
+            userData = currentUser;
           }
         }
         
         if (userData) {
-          console.log('Settings page: Retrieved user/employee data from API:', userData);
+          console.log('Settings page: Retrieved user/employee data:', userData);
           dispatch({
             type: ACTIONS.SET_CURRENT_USER,
             payload: userData
@@ -162,12 +207,8 @@ export default function SettingsPage() {
           console.log('Settings page: No user/employee data returned from API');
           setError('Could not retrieve user data. Please try again.');
           
-          // If no auth method succeeded, redirect to login after a delay
-          setTimeout(() => {
-            if (typeof window !== 'undefined') {
-              window.location.href = '/login';
-            }
-          }, 3000);
+          // DO NOT automatically redirect - let the user manually refresh or go back
+          // Instead, add a refresh button to the error message
         }
       } catch (error) {
         console.error('Settings page: Error fetching user data:', error);
@@ -178,7 +219,7 @@ export default function SettingsPage() {
     };
     
     fetchCurrentUser();
-  }, [dispatch]);
+  }, [dispatch, currentUser]);
   
   // Update form if currentUser changes
   useEffect(() => {
@@ -522,12 +563,20 @@ export default function SettingsPage() {
           <div className="mb-6 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center text-red-600 dark:text-red-400">
             <X className="h-5 w-5 mr-2 flex-shrink-0" />
             <span className="text-sm">{error}</span>
-            <button
-              className="ml-auto text-red-600 dark:text-red-400"
-              onClick={() => setError('')}
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={() => window.location.reload()}
+                className="py-1 px-3 bg-red-100 dark:bg-red-800/30 hover:bg-red-200 dark:hover:bg-red-700/30 rounded text-xs"
+              >
+                Refresh Page
+              </button>
+              <button
+                className="text-red-600 dark:text-red-400"
+                onClick={() => setError('')}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
         
