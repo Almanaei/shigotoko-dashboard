@@ -7,6 +7,13 @@ import { useTheme } from '@/lib/ThemeProvider';
 import { useRouter } from 'next/navigation';
 import { API } from '@/lib/api';
 
+// Add TypeScript interface for the extended Window object at the top of the file (after imports)
+declare global {
+  interface Window {
+    __handleAvatarError?: () => void;
+  }
+}
+
 export default function Navbar() {
   const { state, dispatch } = useDashboard();
   const { currentUser, notifications } = state;
@@ -352,41 +359,17 @@ export default function Navbar() {
             alt={currentUser.name || 'User'}
             onError={(e) => {
               try {
-                // If image fails to load, show initials instead and log debug info
-                const avatarSrc = currentUser?.avatar || '';
-                console.error('Avatar image failed to load:', {
-                  src: avatarSrc ? avatarSrc.substring(0, 50) + '...' : 'undefined',
-                  type: avatarSrc ? (
-                    avatarSrc.startsWith('data:') ? 'data:URL' : 
-                    avatarSrc.startsWith('http') ? 'HTTP URL' : 'Other'
-                  ) : 'undefined',
-                  length: avatarSrc ? avatarSrc.length : 0
-                });
-                
-                // Set a flag that the avatar failed to load
-                if (typeof localStorage !== 'undefined') {
-                  localStorage.setItem('avatarFailedToLoad', 'true');
-                }
-                
                 // Hide the broken image
                 if (e.currentTarget) {
                   e.currentTarget.style.display = 'none';
                 }
                 
-                // Show the fallback avatar (initials)
-                const fallback = document.getElementById('avatar-fallback');
-                if (fallback) {
-                  fallback.classList.remove('hidden');
-                }
-                
-                // Try refreshing the profile after a short delay (only once)
-                if (avatarRefreshAttempt === 0) {
-                  setTimeout(() => {
-                    setAvatarRefreshAttempt(1);
-                  }, 2000);
+                // Call the global handler if available, bypassing Next.js error interception
+                if (window.__handleAvatarError) {
+                  window.__handleAvatarError();
                 }
               } catch (err) {
-                console.error('Error in avatar onError handler:', err);
+                // Silent fail
               }
             }}
           />
@@ -522,6 +505,53 @@ export default function Navbar() {
       }
     }
   }, [currentUser, dispatch]);
+
+  // Add event listener to safely track avatar failures without triggering Next.js error systems
+  useEffect(() => {
+    // Define a global handler for avatar loading errors
+    const handleAvatarError = () => {
+      try {
+        // Get DOM element for fallback
+        const fallback = document.getElementById('avatar-fallback');
+        if (fallback) {
+          fallback.classList.remove('hidden');
+        }
+        
+        // Store information in localStorage for recovery
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('avatarFailedToLoad', 'true');
+        }
+        
+        // Log information without triggering error systems
+        if (currentUser?.avatar) {
+          const avatarInfo = {
+            type: currentUser.avatar.startsWith('data:') ? 'data:URL' : 
+                  currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'other',
+            length: currentUser.avatar.length,
+            preview: currentUser.avatar.substring(0, 20) + '...'
+          };
+          console.log('[Avatar] Failed to load:', avatarInfo);
+        } else {
+          console.log('[Avatar] Failed to load: no avatar available');
+        }
+        
+        // Schedule a refresh attempt
+        setTimeout(() => {
+          setAvatarRefreshAttempt(prev => prev + 1);
+        }, 2000);
+      } catch (err) {
+        // Use silent fail approach
+      }
+    };
+    
+    // Add event listener to the global window
+    window.__handleAvatarError = handleAvatarError;
+    
+    return () => {
+      // Clean up
+      delete window.__handleAvatarError;
+    };
+  }, [currentUser, setAvatarRefreshAttempt]);
 
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 px-4 flex items-center justify-between">
