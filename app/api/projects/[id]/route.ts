@@ -3,10 +3,13 @@ import prisma from '@/lib/prisma';
 import { PrismaClient, Prisma } from '@prisma/client';
 
 // GET a single project by ID
-export async function GET(request: NextRequest, context: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Properly extract params by awaiting it first - inside the async block
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     const project = await prisma.project.findUnique({
       where: { id },
@@ -35,7 +38,7 @@ export async function GET(request: NextRequest, context: { params: { id: string 
     return NextResponse.json(project);
   } catch (error) {
     // Get id safely for error logging
-    const id = context.params.id;
+    const id = params.id;
     console.error(`Error fetching project with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to fetch project' },
@@ -45,10 +48,13 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 }
 
 // UPDATE a project
-export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Properly extract params by awaiting it first - inside the async block
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     const body = await request.json();
     
@@ -146,7 +152,7 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
     return NextResponse.json(updatedProject);
   } catch (error) {
     // Get id safely for error logging
-    const id = context.params.id;
+    const id = params.id;
     console.error(`Error updating project with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to update project', details: error instanceof Error ? error.message : String(error) },
@@ -156,10 +162,13 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 }
 
 // DELETE a project
-export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Properly extract params by awaiting it first - inside the async block
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     // Check if project exists
     const project = await prisma.project.findUnique({
@@ -202,7 +211,7 @@ export async function DELETE(request: NextRequest, context: { params: { id: stri
     );
   } catch (error) {
     // Get id safely for error logging
-    const id = context.params.id;
+    const id = params.id;
     console.error(`Error deleting project with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to delete project' },

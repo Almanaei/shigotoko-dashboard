@@ -4,10 +4,13 @@ import { createSuccessResponse, withErrorHandling, errors } from '@/lib/api-util
 import { getCurrentAuthenticatedEntity } from '@/lib/auth';
 
 // GET a specific notification
-export async function GET(request: NextRequest, context: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   return withErrorHandling(async () => {
-    // Properly extract params by awaiting it first
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     // Get current user
     const { entity, type } = await getCurrentAuthenticatedEntity(request);
@@ -35,10 +38,13 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 }
 
 // PATCH to update a notification (e.g., mark as read)
-export async function PATCH(request: NextRequest, context: { params: { id: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   return withErrorHandling(async () => {
-    // Properly extract params by awaiting it first
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     // Get current user
     const { entity, type } = await getCurrentAuthenticatedEntity(request);
@@ -75,10 +81,13 @@ export async function PATCH(request: NextRequest, context: { params: { id: strin
 }
 
 // DELETE a notification
-export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   return withErrorHandling(async () => {
-    // Properly extract params by awaiting it first
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     // Get current user
     const { entity, type } = await getCurrentAuthenticatedEntity(request);

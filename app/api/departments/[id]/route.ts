@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 // GET a single department by ID
-export async function GET(request: NextRequest, context: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Properly extract params by awaiting it first - inside the async block
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     const department = await prisma.department.findUnique({
       where: { id },
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest, context: { params: { id: string 
     return NextResponse.json(department);
   } catch (error) {
     // Get id safely for error logging
-    const id = context.params.id;
+    const id = params.id;
     console.error(`Error fetching department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to fetch department' },
@@ -34,10 +37,13 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 }
 
 // UPDATE a department
-export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Properly extract params by awaiting it first - inside the async block
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     const body = await request.json();
     
@@ -66,7 +72,7 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
     return NextResponse.json(updatedDepartment);
   } catch (error) {
     // Get id safely for error logging
-    const id = context.params.id;
+    const id = params.id;
     console.error(`Error updating department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to update department' },
@@ -76,10 +82,13 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 }
 
 // DELETE a department
-export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Properly extract params by awaiting it first - inside the async block
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     // Check if department exists
     const department = await prisma.department.findUnique({
@@ -113,7 +122,7 @@ export async function DELETE(request: NextRequest, context: { params: { id: stri
     );
   } catch (error) {
     // Get id safely for error logging
-    const id = context.params.id;
+    const id = params.id;
     console.error(`Error deleting department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to delete department' },

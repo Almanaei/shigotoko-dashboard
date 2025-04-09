@@ -4,10 +4,13 @@ import { createSuccessResponse, withErrorHandling, errors } from '@/lib/api-util
 import { cookies } from 'next/headers';
 
 // GET a single employee by ID
-export async function GET(request: NextRequest, context: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   return withErrorHandling(async () => {
-    // Properly extract params by awaiting it first
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     const employee = await prisma.employee.findUnique({
       where: { id },
@@ -32,10 +35,13 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 }
 
 // UPDATE an employee
-export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   return withErrorHandling(async () => {
-    // Properly extract params by awaiting it first
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     const body = await request.json();
     
@@ -207,10 +213,13 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 }
 
 // DELETE an employee
-export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   return withErrorHandling(async () => {
-    // Properly extract params by awaiting it first
-    const { id } = context.params;
+    // Must await params before using it
+    const id = params.id;
     
     // Check if employee exists
     const employee = await prisma.employee.findUnique({
