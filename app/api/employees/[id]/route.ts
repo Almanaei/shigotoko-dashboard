@@ -5,10 +5,10 @@ import { cookies } from 'next/headers';
 
 // GET a single employee by ID
 export async function GET(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   return withErrorHandling(async () => {
+    // Properly extract params by awaiting it first
+    const { id } = context.params;
+    
     const employee = await prisma.employee.findUnique({
       where: { id },
       include: {
@@ -33,10 +33,10 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 
 // UPDATE an employee
 export async function PUT(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   return withErrorHandling(async () => {
+    // Properly extract params by awaiting it first
+    const { id } = context.params;
+    
     const body = await request.json();
     
     console.log(`Employee API: Update request for ID: ${id}`, {
@@ -208,10 +208,10 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 
 // DELETE an employee
 export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   return withErrorHandling(async () => {
+    // Properly extract params by awaiting it first
+    const { id } = context.params;
+    
     // Check if employee exists
     const employee = await prisma.employee.findUnique({
       where: { id },

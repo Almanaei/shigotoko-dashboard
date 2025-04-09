@@ -4,10 +4,10 @@ import { PrismaClient, Prisma } from '@prisma/client';
 
 // GET a single project by ID
 export async function GET(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   try {
+    // Properly extract params by awaiting it first - inside the async block
+    const { id } = context.params;
+    
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
@@ -34,6 +34,8 @@ export async function GET(request: NextRequest, context: { params: { id: string 
     
     return NextResponse.json(project);
   } catch (error) {
+    // Get id safely for error logging
+    const id = context.params.id;
     console.error(`Error fetching project with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to fetch project' },
@@ -44,10 +46,10 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 
 // UPDATE a project
 export async function PUT(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   try {
+    // Properly extract params by awaiting it first - inside the async block
+    const { id } = context.params;
+    
     const body = await request.json();
     
     // Check if project exists
@@ -143,6 +145,8 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
     
     return NextResponse.json(updatedProject);
   } catch (error) {
+    // Get id safely for error logging
+    const id = context.params.id;
     console.error(`Error updating project with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to update project', details: error instanceof Error ? error.message : String(error) },
@@ -153,10 +157,10 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 
 // DELETE a project
 export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   try {
+    // Properly extract params by awaiting it first - inside the async block
+    const { id } = context.params;
+    
     // Check if project exists
     const project = await prisma.project.findUnique({
       where: { id }
@@ -197,6 +201,8 @@ export async function DELETE(request: NextRequest, context: { params: { id: stri
       { status: 200 }
     );
   } catch (error) {
+    // Get id safely for error logging
+    const id = context.params.id;
     console.error(`Error deleting project with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to delete project' },

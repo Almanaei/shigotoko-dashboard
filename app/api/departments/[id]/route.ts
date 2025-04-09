@@ -3,10 +3,10 @@ import prisma from '@/lib/prisma';
 
 // GET a single department by ID
 export async function GET(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   try {
+    // Properly extract params by awaiting it first - inside the async block
+    const { id } = context.params;
+    
     const department = await prisma.department.findUnique({
       where: { id },
       include: {
@@ -23,6 +23,8 @@ export async function GET(request: NextRequest, context: { params: { id: string 
     
     return NextResponse.json(department);
   } catch (error) {
+    // Get id safely for error logging
+    const id = context.params.id;
     console.error(`Error fetching department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to fetch department' },
@@ -33,10 +35,10 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 
 // UPDATE a department
 export async function PUT(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   try {
+    // Properly extract params by awaiting it first - inside the async block
+    const { id } = context.params;
+    
     const body = await request.json();
     
     // Check if department exists
@@ -63,6 +65,8 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
     
     return NextResponse.json(updatedDepartment);
   } catch (error) {
+    // Get id safely for error logging
+    const id = context.params.id;
     console.error(`Error updating department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to update department' },
@@ -73,10 +77,10 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
 
 // DELETE a department
 export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   try {
+    // Properly extract params by awaiting it first - inside the async block
+    const { id } = context.params;
+    
     // Check if department exists
     const department = await prisma.department.findUnique({
       where: { id },
@@ -108,6 +112,8 @@ export async function DELETE(request: NextRequest, context: { params: { id: stri
       { status: 200 }
     );
   } catch (error) {
+    // Get id safely for error logging
+    const id = context.params.id;
     console.error(`Error deleting department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to delete department' },

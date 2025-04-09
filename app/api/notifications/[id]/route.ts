@@ -5,10 +5,10 @@ import { getCurrentAuthenticatedEntity } from '@/lib/auth';
 
 // GET a specific notification
 export async function GET(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   return withErrorHandling(async () => {
+    // Properly extract params by awaiting it first
+    const { id } = context.params;
+    
     // Get current user
     const { entity, type } = await getCurrentAuthenticatedEntity(request);
     
@@ -36,10 +36,10 @@ export async function GET(request: NextRequest, context: { params: { id: string 
 
 // PATCH to update a notification (e.g., mark as read)
 export async function PATCH(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   return withErrorHandling(async () => {
+    // Properly extract params by awaiting it first
+    const { id } = context.params;
+    
     // Get current user
     const { entity, type } = await getCurrentAuthenticatedEntity(request);
     
@@ -76,10 +76,10 @@ export async function PATCH(request: NextRequest, context: { params: { id: strin
 
 // DELETE a notification
 export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
-  // Properly extract params to avoid the Next.js warning
-  const { id } = context.params;
-  
   return withErrorHandling(async () => {
+    // Properly extract params by awaiting it first
+    const { id } = context.params;
+    
     // Get current user
     const { entity, type } = await getCurrentAuthenticatedEntity(request);
     
