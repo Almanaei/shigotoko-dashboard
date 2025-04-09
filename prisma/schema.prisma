@@ -23,13 +23,13 @@ model User {
 }
 
 model Session {
-  id        String   @id
-  userId    String
-  expires   DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id
+  userId     String
+  expires    DateTime
+  createdAt  DateTime  @default(now())
   employeeId String?
   employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Employee {
@@ -43,15 +43,15 @@ model Employee {
   status            String
   joinDate          DateTime
   performance       Int
-  role              String                @default("employee")
-  password          String?
-  sessions          Session[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
+  role              String                @default("employee")
+  password          String?
   uploadedDocuments Document[]
   department        Department            @relation(fields: [departmentId], references: [id])
   messages          Message[]
   projects          ProjectsOnEmployees[]
+  sessions          Session[]
   sharedDocuments   Document[]            @relation("DocumentSharedWith")
 }
 
@@ -124,16 +124,19 @@ model Message {
 }
 
 model MessageArchive {
-  id         String   @id @default(uuid())
-  content    String
-  senderId   String?
-  employeeId String?  
-  senderName String?
+  id           String   @id @default(uuid())
+  content      String
+  senderId     String?
+  employeeId   String?
+  senderName   String?
   senderAvatar String?
-  timestamp  DateTime
-  archiveMonth String  // Format: YYYY-MM
-  isEmployee Boolean @default(false)
-  createdAt  DateTime @default(now())
+  timestamp    DateTime
+  archiveMonth String
+  isEmployee   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([archiveMonth])
+  @@index([timestamp])
 }
 
 model Notification {

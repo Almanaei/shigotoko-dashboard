@@ -18,13 +18,21 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit') as string, 10) : 50;
     const page = searchParams.get('page') ? parseInt(searchParams.get('page') as string, 10) : 1;
     const unreadOnly = searchParams.get('unreadOnly') === 'true';
+    const after = searchParams.get('after');  // Add support for 'after' timestamp parameter
     
     // Build query
     const skip = (page - 1) * limit;
-    const where = {
+    const where: any = {
       userId: entity.id,
       ...(unreadOnly ? { read: false } : {}),
     };
+    
+    // Add timestamp filter if 'after' parameter is provided
+    if (after) {
+      where.createdAt = {
+        gt: new Date(after)
+      };
+    }
     
     // Fetch notifications
     const [notifications, totalCount] = await Promise.all([

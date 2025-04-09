@@ -9,6 +9,9 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Correctly handle params in an async context by awaiting
+    const { id: documentId } = params;
+    
     // Get session token from cookies
     const sessionToken = request.cookies.get('session-token')?.value;
 
@@ -34,8 +37,11 @@ export async function POST(
 
     // Get document from database
     const document = await prisma.document.findUnique({
-      where: { id: params.id },
-      include: { uploadedBy: true },
+      where: { id: documentId },
+      include: { 
+        uploadedBy: true,
+        sharedWith: true 
+      },
     });
 
     if (!document) {
@@ -50,7 +56,14 @@ export async function POST(
       where: { email: session.user.email },
     });
 
-    if (!employee || document.uploadedById !== employee.id) {
+    if (!employee) {
+      return NextResponse.json(
+        { error: 'Employee not found' },
+        { status: 404 }
+      );
+    }
+
+    if (document.uploadedById !== employee.id) {
       return NextResponse.json(
         { error: 'Unauthorized to share this document' },
         { status: 403 }
@@ -68,13 +81,39 @@ export async function POST(
       );
     }
 
-    // Update document in database to share with users
-    const updatedDocument = await prisma.document.update({
-      where: { id: params.id },
+    // Verify that all userIds exist as employees
+    const employeeCount = await prisma.employee.count({
+      where: {
+        id: {
+          in: userIds
+        }
+      }
+    });
+
+    if (employeeCount !== userIds.length) {
+      return NextResponse.json(
+        { error: 'One or more employee IDs are invalid' },
+        { status: 400 }
+      );
+    }
+
+    // First, disconnect all existing relations
+    await prisma.document.update({
+      where: { id: documentId },
       data: {
         sharedWith: {
-          set: userIds.map(id => ({ id })),
-        },
+          disconnect: document.sharedWith.map(emp => ({ id: emp.id }))
+        }
+      }
+    });
+
+    // Then connect the new relations
+    const updatedDocument = await prisma.document.update({
+      where: { id: documentId },
+      data: {
+        sharedWith: {
+          connect: userIds.map(id => ({ id }))
+        }
       },
       include: {
         project: true,
@@ -87,7 +126,7 @@ export async function POST(
   } catch (error) {
     console.error('Error sharing document:', error);
     return NextResponse.json(
-      { error: 'Failed to share document' },
+      { error: `Failed to share document: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
   }

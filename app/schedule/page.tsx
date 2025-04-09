@@ -14,7 +14,8 @@ import {
   Clock, 
   X,
   List,
-  CalendarDays
+  CalendarDays,
+  AlertTriangle
 } from 'lucide-react';
 
 // Days of the week
@@ -25,7 +26,7 @@ const MONTHS = [
 ];
 
 export default function SchedulePage() {
-  const { state } = useDashboard();
+  const { state, dispatch } = useDashboard();
   const { projects, departments } = state;
 
   // Calendar state
@@ -41,6 +42,37 @@ export default function SchedulePage() {
   // Event detail state
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [showProjectDetails, setShowProjectDetails] = useState(false);
+
+  // API state
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch projects from API when component mounts
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        // Only fetch projects if we don't already have them
+        if (projects.length === 0) {
+          const response = await fetch('/api/projects');
+          if (!response.ok) throw new Error('Failed to fetch projects');
+          const data = await response.json();
+          
+          // Update the dashboard state with projects
+          dispatch({ type: 'SET_PROJECTS', payload: data });
+        }
+      } catch (err) {
+        setError('Failed to load project data. Please try again later.');
+        console.error('Error fetching projects:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, [dispatch, projects.length]);
 
   // Generate calendar days when month or view mode changes
   useEffect(() => {
@@ -139,7 +171,7 @@ export default function SchedulePage() {
   const filteredProjects = projects.filter(project => {
     const matchesSearch = searchTerm === '' || 
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.description.toLowerCase().includes(searchTerm.toLowerCase());
+      (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesDepartment = departmentFilter === 'all' || project.departmentId === departmentFilter;
     
@@ -251,6 +283,7 @@ export default function SchedulePage() {
                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 dark:text-gray-200"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                disabled={isLoading}
               />
             </div>
             
@@ -259,6 +292,7 @@ export default function SchedulePage() {
               className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
+              disabled={isLoading}
             >
               <option value="all">All Departments</option>
               {departments.map(dept => (
@@ -273,6 +307,7 @@ export default function SchedulePage() {
               className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | 'all')}
+              disabled={isLoading}
             >
               <option value="all">All Statuses</option>
               <option value="planning">Planning</option>
@@ -286,6 +321,7 @@ export default function SchedulePage() {
             <button
               onClick={toggleViewMode}
               className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center gap-2"
+              disabled={isLoading}
             >
               {viewMode === 'month' ? (
                 <>
@@ -301,107 +337,128 @@ export default function SchedulePage() {
             </button>
           </div>
         </div>
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-md text-red-700 dark:text-red-400 flex items-start">
+            <AlertTriangle className="h-5 w-5 mr-2 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
         
-        <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark mb-6 overflow-hidden">
-          {/* Calendar header */}
-          <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-dark-border">
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={goToPrevious}
-                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <ChevronLeft className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-              </button>
+        {isLoading ? (
+          <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark mb-6 p-8 flex justify-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-e-transparent align-[-0.125em] text-blue-600 dark:text-blue-400 motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark mb-6 overflow-hidden">
+            {/* Calendar header */}
+            <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-dark-border">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={goToPrevious}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <ChevronLeft className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                </button>
+                
+                <button
+                  onClick={goToNext}
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <ChevronRight className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                </button>
+                
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {viewMode === 'month'
+                    ? `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+                    : `Week of ${formatDate(calendarDays[0] || new Date())}`
+                  }
+                </h2>
+              </div>
               
               <button
-                onClick={goToNext}
-                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                onClick={goToToday}
+                className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
               >
-                <ChevronRight className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                Today
               </button>
-              
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {viewMode === 'month'
-                  ? `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`
-                  : `Week of ${formatDate(calendarDays[0])}`
-                }
-              </h2>
             </div>
             
-            <button
-              onClick={goToToday}
-              className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
-            >
-              Today
-            </button>
-          </div>
-          
-          {/* Calendar days */}
-          <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800/50">
-            {DAYS.map(day => (
-              <div 
-                key={day} 
-                className="py-2 text-center text-sm font-medium text-gray-700 dark:text-gray-300"
-              >
-                {day.slice(0, 3)}
-              </div>
-            ))}
-          </div>
-          
-          {/* Calendar grid */}
-          <div className={`grid grid-cols-7 ${viewMode === 'month' ? 'grid-rows-6' : 'grid-rows-1'}`}>
-            {calendarDays.map((day, index) => {
-              const isCurrentDay = isToday(day);
-              const inCurrentMonth = isCurrentMonth(day);
-              const projectsForDay = getProjectsForDay(day);
-              
-              return (
+            {/* Calendar days */}
+            <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800/50">
+              {DAYS.map(day => (
                 <div 
-                  key={index} 
-                  className={`min-h-[100px] p-2 border-b border-r border-gray-200 dark:border-dark-border relative ${
-                    !inCurrentMonth ? 'bg-gray-50 dark:bg-gray-800/30 text-gray-400 dark:text-gray-600' : ''
-                  }`}
+                  key={day} 
+                  className="py-2 text-center text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
-                  <div className={`flex justify-between items-center mb-1`}>
-                    <span className={`text-sm font-medium ${
-                      isCurrentDay 
-                        ? 'bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center'
-                        : 'text-gray-700 dark:text-gray-300'
-                    }`}>
-                      {day.getDate()}
-                    </span>
-                    {projectsForDay.length > 0 && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {projectsForDay.length} event{projectsForDay.length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="space-y-1.5 overflow-y-auto max-h-[80px]">
-                    {projectsForDay.map((event, i) => (
-                      <div 
-                        key={`${event.project.id}-${event.type}-${i}`}
-                        onClick={() => showProjectDetail(event.project)}
-                        className="text-xs p-1 rounded cursor-pointer truncate flex items-center gap-1"
-                        style={{ backgroundColor: `${getDepartmentColor(event.project.departmentId)}20` }}
-                      >
-                        {event.type === 'start' ? (
-                          <FolderKanban className="h-3 w-3 shrink-0" style={{ color: getDepartmentColor(event.project.departmentId) }} />
-                        ) : (
-                          <Clock className="h-3 w-3 shrink-0" style={{ color: getDepartmentColor(event.project.departmentId) }} />
-                        )}
-                        <span style={{ color: getDepartmentColor(event.project.departmentId) }}>
-                          {event.type === 'start' ? 'Start: ' : 'Due: '}
-                          {event.project.name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {day.slice(0, 3)}
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            
+            {/* Calendar grid */}
+            <div className={`grid grid-cols-7 ${viewMode === 'month' ? 'grid-rows-6' : 'grid-rows-1'}`}>
+              {calendarDays.map((day, index) => {
+                const isCurrentDay = isToday(day);
+                const inCurrentMonth = isCurrentMonth(day);
+                const projectsForDay = getProjectsForDay(day);
+                
+                return (
+                  <div 
+                    key={index} 
+                    className={`min-h-[100px] p-2 border-b border-r border-gray-200 dark:border-dark-border relative ${
+                      !inCurrentMonth ? 'bg-gray-50 dark:bg-gray-800/30 text-gray-400 dark:text-gray-600' : ''
+                    }`}
+                  >
+                    <div className={`flex justify-between items-center mb-1`}>
+                      <span className={`text-sm font-medium ${
+                        isCurrentDay 
+                          ? 'bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center'
+                          : 'text-gray-700 dark:text-gray-300'
+                      }`}>
+                        {day.getDate()}
+                      </span>
+                      {projectsForDay.length > 0 && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                          {projectsForDay.length} event{projectsForDay.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-1.5 overflow-y-auto max-h-[80px]">
+                      {projectsForDay.map((event, i) => (
+                        <div 
+                          key={`${event.project.id}-${event.type}-${i}`}
+                          onClick={() => showProjectDetail(event.project)}
+                          className="text-xs p-1.5 rounded cursor-pointer truncate flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                          style={{ backgroundColor: `${getDepartmentColor(event.project.departmentId)}20` }}
+                        >
+                          {event.type === 'start' ? (
+                            <FolderKanban className="h-3 w-3 shrink-0" style={{ color: getDepartmentColor(event.project.departmentId) }} />
+                          ) : (
+                            <Clock className="h-3 w-3 shrink-0" style={{ color: getDepartmentColor(event.project.departmentId) }} />
+                          )}
+                          <span style={{ color: getDepartmentColor(event.project.departmentId) }}>
+                            {event.type === 'start' ? 'Start: ' : 'Due: '}
+                            {event.project.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
+        
+        {projects.length === 0 && !isLoading && (
+          <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm p-8 text-center">
+            <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-400 dark:text-gray-600 opacity-60" />
+            <h3 className="text-lg font-medium text-gray-800 dark:text-gray-200 mb-2">No projects available</h3>
+            <p className="text-gray-600 dark:text-gray-400">There are no projects to display on the calendar.</p>
+          </div>
+        )}
         
         {/* Project details modal */}
         {showProjectDetails && selectedProject && (
@@ -480,7 +537,7 @@ export default function SchedulePage() {
                 <div className="mb-3">
                   <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Team Members</h4>
                   <div className="flex flex-wrap gap-2">
-                    {selectedProject.teamMembers.length > 0 ? (
+                    {selectedProject.teamMembers && selectedProject.teamMembers.length > 0 ? (
                       <p className="text-gray-600 dark:text-gray-400 text-sm">
                         {selectedProject.teamMembers.length} team members assigned
                       </p>

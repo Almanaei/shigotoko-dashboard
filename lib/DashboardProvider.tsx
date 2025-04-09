@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState, useRef, useCallback } from 'react';
 import { API } from '@/lib/api';
 import { useAuth } from '@/lib/AuthProvider';
 import { updateCachedDashboardData, clearCachedDashboardData } from '@/lib/cacheData';
@@ -165,6 +165,7 @@ export const ACTIONS = {
   SET_LOADING: 'SET_LOADING',
   SET_ERROR: 'SET_ERROR',
   SET_INITIALIZED: 'SET_INITIALIZED',
+  MERGE_NOTIFICATIONS: 'MERGE_NOTIFICATIONS',
 } as const;
 
 // Define action types with literal types for better type checking
@@ -202,7 +203,8 @@ type Action =
   | { type: typeof ACTIONS.REMOVE_MESSAGE; payload: string }
   | { type: typeof ACTIONS.SET_LOADING; payload: boolean }
   | { type: typeof ACTIONS.SET_ERROR; payload: string | null }
-  | { type: typeof ACTIONS.SET_INITIALIZED; payload: boolean };
+  | { type: typeof ACTIONS.SET_INITIALIZED; payload: boolean }
+  | { type: typeof ACTIONS.MERGE_NOTIFICATIONS; payload: Notification[] };
 
 type DashboardDispatch = (action: Action) => void;
 
@@ -364,6 +366,29 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return { ...state, error: action.payload };
     case ACTIONS.SET_INITIALIZED:
       return { ...state, initialized: action.payload };
+    case ACTIONS.MERGE_NOTIFICATIONS:
+      // Create a lookup for existing notifications by id
+      const existingNotificationMap = new Map(
+        state.notifications.map(notif => [notif.id, notif])
+      );
+      
+      // Add new notifications, preserving existing ones
+      const newNotifications = action.payload as Notification[];
+      
+      // Add new notifications that don't already exist
+      // Update existing ones if they've changed
+      newNotifications.forEach(newNotif => {
+        existingNotificationMap.set(newNotif.id, newNotif);
+      });
+      
+      // Convert map back to array and sort by timestamp (newest first)
+      const mergedNotifications = Array.from(existingNotificationMap.values())
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      return {
+        ...state,
+        notifications: mergedNotifications
+      };
     default:
       return state;
   }
@@ -724,6 +749,171 @@ export function updateUserAvatar(avatar: string) {
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const [initialized, setInitialized] = useState(false);
+  const { state: authState } = useAuth();
+  const [isEmployee] = useState(false);
+  
+  // Define polling interval in milliseconds (30 seconds)
+  const NOTIFICATION_POLL_INTERVAL = 60000; // Changed from 30s to 60s to reduce API calls
+  
+  // Add ref to track polling interval
+  const notificationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Add ref to track latest notifications
+  const notificationsRef = useRef<Notification[]>([]);
+  
+  // Track last poll time to implement exponential backoff
+  const lastPollTimeRef = useRef<number>(0);
+  const consecutiveEmptyPollsRef = useRef<number>(0);
+  
+  // Update ref when notifications change
+  useEffect(() => {
+    notificationsRef.current = state.notifications;
+  }, [state.notifications]);
+  
+  // Add a helper for notification sounds
+  const playNotificationSound = () => {
+    try {
+      // Simple Web Audio API implementation for notification sound
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      // Configure the oscillator
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(587.33, audioContext.currentTime); // D5
+      oscillator.connect(gainNode);
+      
+      // Configure volume envelope
+      gainNode.connect(audioContext.destination);
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.05);
+      gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.5);
+      
+      // Play the sound
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.error('Error playing notification sound:', error);
+    }
+  };
+
+  // Optimized pollForNotifications function with smart polling strategy
+  const pollForNotifications = useCallback(async () => {
+    try {
+      // Get the current time
+      const now = Date.now();
+      
+      // Calculate time since last poll
+      const timeSinceLastPoll = now - lastPollTimeRef.current;
+      
+      // If we've had multiple empty polls, gradually back off
+      const backoffTime = Math.min(
+        NOTIFICATION_POLL_INTERVAL * Math.pow(1.5, consecutiveEmptyPollsRef.current), 
+        300000 // Maximum backoff of 5 minutes
+      );
+      
+      // Skip this poll if we're backing off and not enough time has passed
+      if (consecutiveEmptyPollsRef.current > 2 && timeSinceLastPoll < backoffTime) {
+        return;
+      }
+      
+      // Update last poll time
+      lastPollTimeRef.current = now;
+      
+      // Get the latest notification timestamp if we have notifications
+      let latestTimestamp: string | undefined;
+      if (notificationsRef.current.length > 0) {
+        // Sort by timestamp to find latest
+        const sortedNotifications = [...notificationsRef.current].sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        latestTimestamp = sortedNotifications[0]?.timestamp;
+      }
+      
+      // Build query parameters
+      const params = new URLSearchParams({
+        limit: '10',
+        unreadOnly: 'true'
+      });
+      
+      // Add timestamp filter if we have a latest timestamp
+      if (latestTimestamp) {
+        params.append('after', latestTimestamp);
+      }
+      
+      const response = await fetch(`/api/notifications?${params.toString()}`, {
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.notifications && Array.isArray(data.notifications)) {
+          // Format notifications for our state
+          const formattedNotifications = data.notifications.map((notif: any) => ({
+            id: notif.id,
+            title: notif.title,
+            description: notif.message,
+            timestamp: notif.createdAt,
+            type: notif.type as 'message' | 'alert' | 'update',
+            read: notif.read
+          }));
+          
+          // Check if we received any new notifications
+          const hasNewNotifications = formattedNotifications.length > 0;
+          
+          // Update consecutive empty polls count
+          if (!hasNewNotifications) {
+            consecutiveEmptyPollsRef.current++;
+          } else {
+            // Reset consecutive empty polls counter when we get new notifications
+            consecutiveEmptyPollsRef.current = 0;
+            
+            // Play sound for new notifications
+            playNotificationSound();
+            
+            // Merge with existing notifications
+            dispatch({ 
+              type: ACTIONS.MERGE_NOTIFICATIONS, 
+              payload: formattedNotifications 
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error polling for notifications:', error);
+      // Still increment empty polls on error to back off
+      consecutiveEmptyPollsRef.current++;
+    }
+  }, []); // No dependencies to prevent unnecessary recreation
+  
+  // Start and stop polling for notifications
+  useEffect(() => {
+    // Only start polling if user is logged in
+    if (authState.user && authState.user.id) {
+      // Poll immediately on login
+      pollForNotifications();
+      
+      // Set up polling interval
+      notificationIntervalRef.current = setInterval(pollForNotifications, NOTIFICATION_POLL_INTERVAL);
+      
+      // Clean up interval on unmount
+      return () => {
+        if (notificationIntervalRef.current) {
+          clearInterval(notificationIntervalRef.current);
+          notificationIntervalRef.current = null;
+        }
+      };
+    } else {
+      // Reset polling state when logged out
+      consecutiveEmptyPollsRef.current = 0;
+      lastPollTimeRef.current = 0;
+    }
+  }, [authState.user, pollForNotifications]);
   
   // Load dashboard data when UserProvider has authenticated
   const { state: userState } = useUser();
@@ -839,8 +1029,6 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, [state.initialized, state.loading]);
   
   // Clear cache on logout
-  const { state: authState } = useAuth();
-  
   useEffect(() => {
     // If user is logged out, clear cached data
     if (!authState.user) {
@@ -944,7 +1132,13 @@ async function initializeData(dispatch: DashboardDispatch) {
     
     // Fetch real notifications instead of using mock data
     try {
-      const response = await fetch('/api/notifications?limit=10');
+      const response = await fetch('/api/notifications?limit=10', {
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -1039,7 +1233,7 @@ export function initializeMockData(dispatch: DashboardDispatch) {
     id: 'user-1',
     name: 'Admin User',
     email: 'admin@shigotoko.com',
-    avatar: '/avatars/admin.jpg',
+    avatar: '/avatar-placeholder.png',
     role: 'Admin'
   };
 
@@ -1091,7 +1285,7 @@ export function initializeMockData(dispatch: DashboardDispatch) {
       department: 'Engineering',
       email: 'sarah@shigotoko.com',
       phone: '+1 (555) 123-4567',
-      avatar: '/avatars/sarah.jpg',
+      avatar: '/avatar-placeholder.png',
       status: 'active',
       joinDate: '2022-03-15',
       performance: 92
@@ -1103,7 +1297,7 @@ export function initializeMockData(dispatch: DashboardDispatch) {
       department: 'Design',
       email: 'john@shigotoko.com',
       phone: '+1 (555) 234-5678',
-      avatar: '/avatars/john.jpg',
+      avatar: '/avatar-placeholder.png',
       status: 'active',
       joinDate: '2022-05-20',
       performance: 85
@@ -1424,7 +1618,13 @@ const fetchDashboardData = (dispatch: DashboardDispatch, isEmployee: boolean = f
   });
   
   // Fetch real notifications
-  fetch('/api/notifications')
+  fetch('/api/notifications', {
+    credentials: 'include',
+    headers: {
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache'
+    }
+  })
     .then(response => {
       if (response.ok) {
         return response.json();

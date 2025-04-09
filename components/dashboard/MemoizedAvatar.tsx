@@ -2,6 +2,7 @@
 
 import React, { useState, memo } from 'react';
 import { User } from '@/lib/DashboardProvider';
+import Image from 'next/image';
 
 interface AvatarProps {
   user: Partial<User> | null;
@@ -94,9 +95,11 @@ const MemoizedAvatar: React.FC<AvatarProps> = memo(({
   // Show the avatar image with fallback
   return (
     <div className={`${getSizeClass()} relative rounded-full overflow-hidden ${className}`}>
-      <img
+      <Image
         src={user?.avatar || ''}
         alt={user?.name || 'User'}
+        width={size === 'sm' ? 32 : size === 'lg' ? 48 : 40}
+        height={size === 'sm' ? 32 : size === 'lg' ? 48 : 40}
         className={`${getSizeClass()} object-cover border border-gray-200 dark:border-gray-700`}
         onError={() => setImageError(true)}
         data-testid="avatar-image"

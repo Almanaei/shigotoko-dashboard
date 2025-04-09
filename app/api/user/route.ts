@@ -32,7 +32,12 @@ export async function PATCH(request: NextRequest) {
     // Get the profile update data from the request
     const { name, email, avatar } = await request.json();
     
-    console.log('Profile update request for user:', session.user.id, { name, email, avatar });
+    console.log('Profile update request for user:', session.user.id, { 
+      name, 
+      email, 
+      hasAvatar: !!avatar,
+      avatarLength: avatar ? avatar.length : 0
+    });
 
     // Validate input - at least one field should be provided
     if (!name && !email && !avatar) {
@@ -50,7 +55,7 @@ export async function PATCH(request: NextRequest) {
       updateData.name = name;
       
       // If no custom avatar is provided, generate one from the name
-      if (!avatar) {
+      if (!avatar && !session.user.avatar) {
         updateData.avatar = generateAvatarUrl(name);
         console.log('Generated avatar based on name:', updateData.avatar);
       }
@@ -59,42 +64,36 @@ export async function PATCH(request: NextRequest) {
     // Handle avatar update if provided
     if (avatar) {
       updateData.avatar = avatar;
-      console.log('Using custom avatar:', avatar);
+      console.log('Using custom avatar, length:', avatar.length);
     }
     
     // Handle email update
     if (email) {
-      // Check if email already exists for another user
-      if (email !== session.user.email) {
-        const existingUser = await prisma.user.findUnique({
-          where: { email },
-        });
-
-        if (existingUser && existingUser.id !== session.user.id) {
-          return NextResponse.json(
-            { error: 'Email already in use by another user' },
-            { status: 409 }
-          );
-        }
-      }
       updateData.email = email;
     }
-
-    // Update the user
+    
+    // Update the user profile
     const updatedUser = await prisma.user.update({
       where: { id: session.user.id },
       data: updateData,
     });
-
-    console.log('User profile updated:', { id: updatedUser.id, name: updatedUser.name });
-
-    // Return the updated user without the password
+    
+    // Log the update result
+    console.log('User profile updated successfully:', {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      hasAvatar: !!updatedUser.avatar,
+      avatarLength: updatedUser.avatar ? updatedUser.avatar.length : 0
+    });
+    
+    // Return the updated user (excluding password)
     const { password, ...userWithoutPassword } = updatedUser;
     
-    // Set a new cookie to extend the session after profile update
+    // Create a response with refreshed session expiration
     const response = NextResponse.json(userWithoutPassword);
     
-    // Update the session cookie to extend its lifetime
+    // Refresh the session cookie to extend its lifetime
     response.cookies.set({
       name: 'session-token',
       value: sessionToken,
@@ -106,10 +105,11 @@ export async function PATCH(request: NextRequest) {
     });
     
     return response;
+    
   } catch (error) {
-    console.error('Profile update error:', error);
+    console.error('Update user profile error:', error);
     return NextResponse.json(
-      { error: 'An error occurred during profile update' },
+      { error: 'Failed to update profile', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

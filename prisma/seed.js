@@ -7,15 +7,16 @@ async function main() {
     console.log('Starting database seed...');
     
     // Create only one admin user
-    console.log('Creating Admin user');
-    const adminUser = await prisma.user.create({
-      data: {
+    console.log('Seeding admin user');
+    const adminUser = await prisma.user.upsert({
+      where: { email: 'admin@shigotoko.com' },
+      update: {},
+      create: {
         name: 'Admin User',
-        email: 'admin@shigotoko.com', 
+        email: 'admin@shigotoko.com',
         password: 'password123', // In a real app, this would be hashed
-        avatar: '/avatars/admin.jpg',
         role: 'Admin',
-        department: 'Management',
+        avatar: '/avatar-placeholder.png',
       },
     });
     
@@ -65,75 +66,93 @@ async function main() {
     console.log('Departments created successfully');
     
     // Create employees
-    const employees = await Promise.all([
-      prisma.employee.create({
-        data: {
-          name: 'John Smith',
-          position: 'Senior Developer',
-          departmentId: engineeringDept.id,
-          email: 'john@shigotoko.com',
-          phone: '123-456-7890',
-          avatar: '/avatars/john.jpg',
-          status: 'active',
-          joinDate: new Date('2020-01-15'),
-          performance: 85,
-        },
-      }),
-      prisma.employee.create({
-        data: {
-          name: 'Emily Wang',
-          position: 'UX Designer',
-          departmentId: designDept.id,
-          email: 'emily@shigotoko.com',
-          phone: '123-456-7891',
-          avatar: '/avatars/emily.jpg',
-          status: 'active',
-          joinDate: new Date('2021-03-10'),
-          performance: 78,
-        },
-      }),
-      prisma.employee.create({
-        data: {
-          name: 'Michael Johnson',
-          position: 'Marketing Specialist',
-          departmentId: marketingDept.id,
-          email: 'michael@shigotoko.com',
-          phone: '123-456-7892',
-          avatar: '/avatars/michael.jpg',
-          status: 'active',
-          joinDate: new Date('2021-05-22'),
-          performance: 72,
-        },
-      }),
-      prisma.employee.create({
-        data: {
-          name: 'Jessica Davis',
-          position: 'HR Manager',
-          departmentId: hrDept.id,
-          email: 'jessica@shigotoko.com',
-          phone: '123-456-7893',
-          avatar: '/avatars/jessica.jpg',
-          status: 'active',
-          joinDate: new Date('2019-11-05'),
-          performance: 90,
-        },
-      }),
-      prisma.employee.create({
-        data: {
-          name: 'David Wilson',
-          position: 'Financial Analyst',
-          departmentId: financeDept.id,
-          email: 'david@shigotoko.com',
-          phone: '123-456-7894',
-          avatar: '/avatars/david.jpg',
-          status: 'active',
-          joinDate: new Date('2020-08-15'),
-          performance: 82,
-        },
-      }),
-    ]);
+    console.log('Seeding employees');
+    const johnEmployee = await prisma.employee.upsert({
+      where: { email: 'john@example.com' },
+      update: {},
+      create: {
+        name: 'John Doe',
+        email: 'john@example.com',
+        password: 'password123',
+        position: 'UI Designer',
+        departmentId: designDept.id,
+        phone: '+1 (555) 123-4567',
+        avatar: '/avatar-placeholder.png',
+        status: 'active',
+        joinDate: new Date('2023-01-15'),
+        performance: 85
+      },
+    });
     
-    console.log(`Created ${employees.length} employees`);
+    const emilyEmployee = await prisma.employee.upsert({
+      where: { email: 'emily@example.com' },
+      update: {},
+      create: {
+        name: 'Emily Johnson',
+        email: 'emily@example.com',
+        password: 'password123',
+        position: 'Frontend Developer',
+        departmentId: engineeringDept.id,
+        phone: '+1 (555) 234-5678',
+        avatar: '/avatar-placeholder.png',
+        status: 'active',
+        joinDate: new Date('2022-08-01'),
+        performance: 92
+      },
+    });
+    
+    const michaelEmployee = await prisma.employee.upsert({
+      where: { email: 'michael@example.com' },
+      update: {},
+      create: {
+        name: 'Michael Smith',
+        email: 'michael@example.com',
+        password: 'password123',
+        position: 'Marketing Specialist',
+        departmentId: marketingDept.id,
+        phone: '+1 (555) 345-6789',
+        avatar: '/avatar-placeholder.png',
+        status: 'active',
+        joinDate: new Date('2023-03-10'),
+        performance: 78
+      },
+    });
+    
+    const jessicaEmployee = await prisma.employee.upsert({
+      where: { email: 'jessica@example.com' },
+      update: {},
+      create: {
+        name: 'Jessica Williams',
+        email: 'jessica@example.com',
+        password: 'password123',
+        position: 'HR Manager',
+        departmentId: hrDept.id,
+        phone: '+1 (555) 456-7890',
+        avatar: '/avatar-placeholder.png',
+        status: 'on-leave',
+        joinDate: new Date('2021-11-15'),
+        performance: 90
+      },
+    });
+    
+    const davidEmployee = await prisma.employee.upsert({
+      where: { email: 'david@example.com' },
+      update: {},
+      create: {
+        name: 'David Brown',
+        email: 'david@example.com',
+        password: 'password123',
+        position: 'Financial Analyst',
+        departmentId: financeDept.id,
+        phone: '+1 (555) 567-8901',
+        avatar: '/avatar-placeholder.png',
+        status: 'active',
+        joinDate: new Date('2022-05-20'),
+        performance: 83
+      },
+    });
+    
+    console.log(`Created ${[johnEmployee, emilyEmployee, michaelEmployee, jessicaEmployee, davidEmployee].length} employees`);
     
     // Update department employee counts
     const departments = [
@@ -205,12 +224,12 @@ async function main() {
     // Assign employees to projects
     await prisma.projectsOnEmployees.createMany({
       data: [
-        { projectId: projects[0].id, employeeId: employees[0].id },
-        { projectId: projects[0].id, employeeId: employees[1].id },
-        { projectId: projects[1].id, employeeId: employees[0].id },
-        { projectId: projects[1].id, employeeId: employees[2].id },
-        { projectId: projects[2].id, employeeId: employees[2].id },
-        { projectId: projects[2].id, employeeId: employees[3].id },
+        { projectId: projects[0].id, employeeId: johnEmployee.id },
+        { projectId: projects[0].id, employeeId: emilyEmployee.id },
+        { projectId: projects[1].id, employeeId: johnEmployee.id },
+        { projectId: projects[1].id, employeeId: michaelEmployee.id },
+        { projectId: projects[2].id, employeeId: michaelEmployee.id },
+        { projectId: projects[2].id, employeeId: jessicaEmployee.id },
       ],
     });
     
@@ -308,7 +327,7 @@ async function main() {
         },
         {
           content: 'We\'re making good progress. Homepage is almost done!',
-          senderName: 'John Smith',
+          senderName: 'John Doe',
           timestamp: new Date('2023-03-15T09:35:00'),
         },
         {
@@ -319,7 +338,7 @@ async function main() {
         },
         {
           content: 'When is our next team meeting?',
-          senderName: 'Emily Wang',
+          senderName: 'Emily Johnson',
           timestamp: new Date('2023-03-16T10:15:00'),
         },
         {

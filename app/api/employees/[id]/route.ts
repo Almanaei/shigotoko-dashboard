@@ -25,7 +25,14 @@ export async function GET(request: NextRequest, { params }: Params) {
       return errors.notFound('Employee', id);
     }
     
-    return createSuccessResponse(employee);
+    // If employee has password, exclude it from the response
+    let responseData = employee;
+    if ('password' in employee) {
+      const { password, ...employeeWithoutPassword } = employee as any;
+      responseData = employeeWithoutPassword;
+    }
+    
+    return createSuccessResponse(responseData);
   });
 }
 
@@ -57,8 +64,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
     
     // Check if department is being changed
-    const isDepartmentChanged = body.departmentId && 
-      existingEmployee.departmentId !== body.departmentId;
+    const isDepartmentChanged = body.department && 
+      existingEmployee.departmentId !== body.department;
     
     // Process and validate avatar if present
     let avatarToSave = body.avatar;
@@ -68,28 +75,34 @@ export async function PUT(request: NextRequest, { params }: Params) {
       
       // If exceptionally large, we might reject or compress further
       if (body.avatar.length > 1000000) {  // 1MB
-        console.log('Employee API: Avatar is exceptionally large, may reject');
+        console.log('Employee API: Avatar is exceptionally large, consider compression');
       }
     } else if (body.avatar) {
       console.log('Employee API: Avatar is not a data URL, accepted as is');
     } else {
-      console.log('Employee API: No avatar in request');
+      console.log('Employee API: No avatar in request, preserving existing avatar');
+      // Important: Don't overwrite existing avatar if none provided
+      avatarToSave = undefined;
     }
+    
+    // Prepare update data with only the fields that were provided
+    const updateData: any = {};
+    
+    // Only include fields that were actually provided
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.position !== undefined) updateData.position = body.position;
+    if (body.department !== undefined) updateData.departmentId = body.department;
+    if (body.email !== undefined) updateData.email = body.email;
+    if (body.phone !== undefined) updateData.phone = body.phone;
+    if (avatarToSave !== undefined) updateData.avatar = avatarToSave;
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.joinDate !== undefined) updateData.joinDate = new Date(body.joinDate);
+    if (body.performance !== undefined) updateData.performance = body.performance;
     
     // Update employee
     const updatedEmployee = await prisma.employee.update({
       where: { id },
-      data: {
-        name: body.name !== undefined ? body.name : undefined,
-        position: body.position !== undefined ? body.position : undefined,
-        departmentId: body.departmentId !== undefined ? body.departmentId : undefined,
-        email: body.email !== undefined ? body.email : undefined,
-        phone: body.phone !== undefined ? body.phone : undefined,
-        avatar: avatarToSave !== undefined ? avatarToSave : undefined,
-        status: body.status !== undefined ? body.status : undefined,
-        joinDate: body.joinDate !== undefined ? new Date(body.joinDate) : undefined,
-        performance: body.performance !== undefined ? body.performance : undefined,
-      },
+      data: updateData,
       include: {
         department: true,
       },
@@ -119,7 +132,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
       
       // Increment new department count
       await prisma.department.update({
-        where: { id: body.departmentId },
+        where: { id: body.department },
         data: {
           employeeCount: {
             increment: 1
@@ -150,63 +163,47 @@ export async function PUT(request: NextRequest, { params }: Params) {
         where: { 
           id: employeeSessionToken,
           // Check if this is an employee session by looking for non-null employeeId
-          // Use a type assertion since Prisma doesn't recognize this in the type
           // @ts-ignore - employeeId exists in the Session model but isn't in the types
           employeeId: { not: null }
         }
       });
       
-      // If session not found or expired, create a new one
-      let effectiveToken = employeeSessionToken;
-      if (!session || session.expires < new Date()) {
-        console.log('Employee API: Session expired or not found, creating new session');
-        
-        // Delete any existing session with this ID
-        if (session) {
-          await prisma.session.delete({ where: { id: employeeSessionToken } });
-        }
-        
-        // Create a new session
-        const newSession = await prisma.session.create({
+      // If session found and valid, refresh it
+      if (session) {
+        // Update the session expiration date
+        await prisma.session.update({
+          where: { id: employeeSessionToken },
           data: {
-            id: employeeSessionToken, // Reuse the same token ID
-            // @ts-ignore - employeeId exists in the Session model but isn't in the types
-            employeeId: id,
             expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
           }
         });
         
-        effectiveToken = newSession.id;
-        console.log('Employee API: Created new session with token:', effectiveToken.substring(0, 8) + '...');
-      } else {
-        // Update the expiration date of the existing session
-        await prisma.session.update({
-          where: { id: employeeSessionToken },
-          data: { expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
+        // Re-set the cookie to extend session lifetime
+        response.cookies.set({
+          name: 'employee-session',
+          value: employeeSessionToken,
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 30 * 24 * 60 * 60, // 30 days
+          path: '/',
         });
-        console.log('Employee API: Extended existing session expiration');
+        
+        // Also refresh the auth_type cookie
+        response.cookies.set({
+          name: 'auth_type',
+          value: 'employee',
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 30 * 24 * 60 * 60, // 30 days
+          path: '/',
+        });
+        
+        console.log('Employee API: Session refreshed successfully');
+      } else {
+        console.log('Employee API: Session not found, could not refresh');
       }
-      
-      response.cookies.set({
-        name: 'employee-session',
-        value: effectiveToken,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-        path: '/',
-      });
-      
-      // Also ensure the auth_type cookie is set
-      response.cookies.set({
-        name: 'auth_type',
-        value: 'employee',
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 30 * 24 * 60 * 60, // 30 days
-        path: '/',
-      });
     }
     
     return response;
@@ -218,9 +215,10 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const id = params.id;
   
   return withErrorHandling(async () => {
-    // Check if employee exists and get department ID
+    // Check if employee exists
     const employee = await prisma.employee.findUnique({
-      where: { id }
+      where: { id },
+      include: { department: true }
     });
     
     if (!employee) {
@@ -232,7 +230,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       where: { id }
     });
     
-    // Update department employee count
+    // Decrement the department's employee count
     await prisma.department.update({
       where: { id: employee.departmentId },
       data: {
@@ -242,6 +240,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       }
     });
     
-    return createSuccessResponse({ message: 'Employee deleted successfully' });
+    return createSuccessResponse({ message: `Employee ${id} deleted successfully` });
   });
 } 

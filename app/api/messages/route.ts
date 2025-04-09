@@ -7,7 +7,7 @@ async function withErrorHandling(handler: () => Promise<NextResponse>) {
   try {
     return await handler();
   } catch (error) {
-    console.error('Message API error:', error);
+    console.error('Message API error');
     return NextResponse.json(
       { error: 'Something went wrong', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       take: limit,
       skip: after ? 0 : (page - 1) * limit,
       orderBy: {
-        timestamp: 'desc',
+        timestamp: 'asc',
       },
       include: {
         employee: {
@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
           gt: new Date(after),
         },
       };
+      queryOptions.orderBy = {
+        timestamp: 'asc',
+      };
     }
     
     const messages = await prisma.message.findMany(queryOptions);
@@ -89,7 +92,10 @@ export async function GET(request: NextRequest) {
     
     // Format messages to include sender information consistently
     const formattedMessages = messages.map(message => {
-      const senderInfo = message.employee || message.sender;
+      // Need to cast the message to include the related entities from the include query
+      const messageWithRelations = message as any;
+      const senderInfo = messageWithRelations.employee || messageWithRelations.sender;
+      
       return {
         id: message.id,
         content: message.content,
@@ -181,7 +187,8 @@ export async function POST(request: NextRequest) {
     });
     
     // Format response consistently
-    const senderInfo = message.employee || message.sender;
+    const messageWithRelations = message as any;
+    const senderInfo = messageWithRelations.employee || messageWithRelations.sender;
     const formattedMessage = {
       id: message.id,
       content: message.content,

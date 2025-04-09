@@ -107,6 +107,18 @@ export default function HeaderStats() {
   const { stats } = state;
   const [month, setMonth] = useState('January');
 
+  // Add a default stats object to use when stats is null
+  const defaultStats = {
+    totalEmployees: 0,
+    totalRevenue: '$0',
+    turnoverRate: '0%',
+    attendanceRate: '0%',
+    teamKPI: '0%'
+  };
+
+  // Use the actual stats or fall back to the default stats if null
+  const displayStats = stats || defaultStats;
+
   return (
     <div className="mb-6 animate-slide-in">
       <div className="flex justify-between items-center mb-6">
@@ -130,11 +142,11 @@ export default function HeaderStats() {
         </div>
       </div>
     
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         <div className="col-span-1">
           <StatCard
             title="Total Employee"
-            value={stats.totalEmployees.toString()}
+            value={displayStats.totalEmployees.toString()}
             icon={<Users className="h-5 w-5" />}
             trend={{ 
               percentage: "10%", 
@@ -147,7 +159,7 @@ export default function HeaderStats() {
         <div className="col-span-1">
           <StatCard
             title="Total Revenue"
-            value={stats.totalRevenue}
+            value={displayStats.totalRevenue}
             icon={<DollarSign className="h-5 w-5" />}
             trend={{ 
               percentage: "5%", 
@@ -161,7 +173,7 @@ export default function HeaderStats() {
         <div className="col-span-1">
           <StatCard
             title="Turnover Rate"
-            value={stats.turnoverRate}
+            value={displayStats.turnoverRate}
             icon={<Percent className="h-5 w-5" />}
             trend={{ 
               percentage: "1%", 
@@ -175,7 +187,7 @@ export default function HeaderStats() {
         <div className="col-span-1">
           <StatCard
             title="Attendance Rate"
-            value={stats.attendanceRate}
+            value={displayStats.attendanceRate}
             icon={<Clock className="h-5 w-5" />}
             trend={{ 
               percentage: "5%", 
@@ -187,7 +199,7 @@ export default function HeaderStats() {
         </div>
         
         <div className="col-span-1">
-          <KPICard kpi={stats.teamKPI} />
+          <KPICard kpi={displayStats.teamKPI} />
         </div>
       </div>
     </div>

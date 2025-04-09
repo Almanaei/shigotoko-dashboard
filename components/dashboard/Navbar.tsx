@@ -10,6 +10,7 @@ import MemoizedAvatar from './MemoizedAvatar';
 import { useSearch } from '@/lib/SearchContext';
 import Link from 'next/link';
 import { API } from '@/lib/api';
+import { Notification } from '@/lib/DashboardProvider';
 
 // Add TypeScript interface for the extended Window object at the top of the file (after imports)
 declare global {
@@ -20,9 +21,8 @@ declare global {
 
 export default function Navbar() {
   const { state, dispatch } = useDashboard();
-  const { notifications } = state;
-  const { state: authState, logout } = useAuth();
-  const { user } = authState;
+  const { notifications = [], currentUser: user = null } = state;
+  const { logout } = useAuth();
   const { openSearch } = useSearch();
   
   const [mounted, setMounted] = useState(false);
@@ -31,6 +31,8 @@ export default function Navbar() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
   const [isMarkingAllAsRead, setIsMarkingAllAsRead] = useState(false);
+  const [isMarkingAsRead, setIsMarkingAsRead] = useState<string | null>(null);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   
@@ -108,6 +110,8 @@ export default function Navbar() {
   const handleMarkAsRead = async (id: string, event: React.MouseEvent) => {
     event.stopPropagation();
     
+    setIsMarkingAsRead(id);
+    
     try {
       await API.notifications.markAsRead(id);
       
@@ -120,6 +124,8 @@ export default function Navbar() {
       });
     } catch (error) {
       console.error('Error marking notification as read:', error);
+    } finally {
+      setIsMarkingAsRead(null);
     }
   };
   
@@ -158,6 +164,41 @@ export default function Navbar() {
     if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
     
     return date.toLocaleDateString();
+  };
+
+  // Group notifications by date
+  const groupNotificationsByDate = (notifications: Notification[]) => {
+    const groups: Record<string, Notification[]> = {};
+    
+    notifications.forEach(notification => {
+      const date = new Date(notification.timestamp);
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      let groupKey: string;
+      
+      if (date.toDateString() === today.toDateString()) {
+        groupKey = 'Today';
+      } else if (date.toDateString() === yesterday.toDateString()) {
+        groupKey = 'Yesterday';
+      } else if (today.getTime() - date.getTime() < 7 * 24 * 60 * 60 * 1000) {
+        // Within the last week
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        groupKey = days[date.getDay()];
+      } else {
+        // Format as MM/DD/YYYY
+        groupKey = date.toLocaleDateString();
+      }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      
+      groups[groupKey].push(notification);
+    });
+    
+    return groups;
   };
 
   // Simple direct logout function
@@ -248,7 +289,7 @@ export default function Navbar() {
       
       {isNotificationMenuOpen && (
         <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg py-2 z-50 border border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+          <div className="px-4 py-2 flex items-center justify-between border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-sm font-medium text-gray-900 dark:text-white">
               Notifications
             </h3>
@@ -273,53 +314,73 @@ export default function Navbar() {
             </button>
           </div>
           
-          <div className="max-h-60 overflow-y-auto">
+          <div className="max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="py-4 px-4 text-sm text-gray-500 dark:text-gray-400 text-center">
                 No notifications
               </div>
             ) : (
               <div>
-                {notifications.map(notification => (
-                  <div 
-                    key={notification.id}
-                    className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 relative ${
-                      !notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                        notification.read 
-                          ? 'bg-gray-300 dark:bg-gray-600' 
-                          : notification.type === 'alert' 
-                            ? 'bg-red-500' 
-                            : notification.type === 'message' 
-                              ? 'bg-blue-500' 
-                              : 'bg-green-500'
-                      }`} />
-                      
-                      <div className="flex-grow min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white mb-0.5">
-                          {notification.title}
-                        </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
-                          {notification.description}
-                        </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                          {formatNotificationDate(notification.timestamp)}
-                        </p>
-                      </div>
-                      
-                      {!notification.read && (
-                        <button
-                          onClick={(e) => handleMarkAsRead(notification.id, e)}
-                          className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                          title="Mark as read"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                      )}
+                {Object.entries(groupNotificationsByDate(notifications)).map(([date, dateNotifications]) => (
+                  <div key={date}>
+                    <div className="sticky top-0 px-4 py-1 bg-gray-50 dark:bg-gray-900/50 border-y border-gray-200 dark:border-gray-700 z-10">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        {date}
+                      </p>
                     </div>
+                    
+                    {dateNotifications.map(notification => (
+                      <div 
+                        key={notification.id}
+                        className={`px-4 py-3 border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 relative ${
+                          !notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`min-w-[8px] w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
+                            notification.read 
+                              ? 'bg-gray-300 dark:bg-gray-600' 
+                              : notification.type === 'alert' 
+                                ? 'bg-red-500' 
+                                : notification.type === 'message' 
+                                  ? 'bg-blue-500' 
+                                  : 'bg-green-500'
+                          }`} />
+                          
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white mb-0.5 flex items-center gap-2">
+                              {notification.title}
+                              {!notification.read && (
+                                <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 rounded">
+                                  New
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2">
+                              {notification.description}
+                            </p>
+                            <div className="flex justify-between items-center mt-1">
+                              <p className="text-xs text-gray-400 dark:text-gray-500">
+                                {formatNotificationDate(notification.timestamp)}
+                              </p>
+                              
+                              {!notification.read && (
+                                <button
+                                  onClick={(e) => handleMarkAsRead(notification.id, e)}
+                                  className="rounded-full p-1 text-blue-500 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+                                >
+                                  {isMarkingAsRead === notification.id ? (
+                                    <span className="h-5 w-5 block rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                                  ) : (
+                                    <Check className="h-5 w-5" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -327,16 +388,157 @@ export default function Navbar() {
           </div>
           
           <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700">
-            <Link href="/notifications" passHref>
-              <div className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-center block">
-                View all notifications
-              </div>
-            </Link>
+            <button 
+              onClick={() => {
+                setShowAllNotifications(true);
+                setIsNotificationMenuOpen(false);
+              }}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-center block w-full"
+            >
+              View all notifications
+            </button>
           </div>
         </div>
       )}
     </div>
   );
+
+  // All notifications modal
+  const renderNotificationsModal = () => {
+    if (!showAllNotifications) return null;
+    
+    return (
+      <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+          <div 
+            className="fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 transition-opacity" 
+            aria-hidden="true"
+            onClick={() => setShowAllNotifications(false)}
+          ></div>
+          
+          <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+          
+          <div 
+            className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl w-full"
+            role="dialog" 
+            aria-modal="true" 
+            aria-labelledby="modal-headline"
+          >
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Bell className="h-5 w-5" /> Notifications
+              </h2>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={handleMarkAllAsRead}
+                  disabled={isMarkingAllAsRead || unreadNotifications === 0}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    unreadNotifications === 0 || isMarkingAllAsRead
+                      ? 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30'
+                  }`}
+                >
+                  {isMarkingAllAsRead ? (
+                    <span className="flex items-center">
+                      <span className="mr-2 h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                      Marking all as read...
+                    </span>
+                  ) : (
+                    'Mark all as read'
+                  )}
+                </button>
+                
+                <button
+                  onClick={() => setShowAllNotifications(false)}
+                  className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="max-h-[calc(100vh-200px)] overflow-y-auto p-6">
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="rounded-full bg-gray-100 p-6 dark:bg-gray-800">
+                    <Bell className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+                  </div>
+                  <h2 className="mt-4 text-xl font-medium text-gray-900 dark:text-white">No notifications</h2>
+                  <p className="mt-2 text-center text-gray-500 dark:text-gray-400">
+                    You don't have any notifications at the moment.<br />
+                    We'll notify you when something important happens.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(groupNotificationsByDate(notifications)).map(([date, dateNotifications]) => (
+                    <div key={date} className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+                      <div className="bg-gray-50 px-6 py-3 dark:bg-gray-800/50">
+                        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">{date}</h3>
+                      </div>
+                      <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {dateNotifications.map(notification => (
+                          <div 
+                            key={notification.id}
+                            className={`p-6 ${!notification.read ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className={`mt-1 h-3 w-3 flex-shrink-0 rounded-full ${
+                                notification.type === 'alert' 
+                                  ? 'bg-red-500' 
+                                  : notification.type === 'message' 
+                                    ? 'bg-blue-500' 
+                                    : 'bg-green-500'
+                              }`} />
+                              
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-base font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                                    {notification.title}
+                                    {!notification.read && (
+                                      <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                                        New
+                                      </span>
+                                    )}
+                                  </h4>
+                                  
+                                  {!notification.read && (
+                                    <button
+                                      onClick={(e) => handleMarkAsRead(notification.id, e)}
+                                      className="rounded-full p-1 text-blue-500 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+                                    >
+                                      {isMarkingAsRead === notification.id ? (
+                                        <span className="h-5 w-5 block rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                                      ) : (
+                                        <Check className="h-5 w-5" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                                
+                                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                                  {notification.description}
+                                </p>
+                                
+                                <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                                  {formatNotificationDate(notification.timestamp)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <header className="sticky top-0 z-10 bg-white dark:bg-dark-header shadow-sm dark:shadow-header-dark transition-colors">
@@ -464,6 +666,7 @@ export default function Navbar() {
           </div>
         </div>
       </div>
+      {renderNotificationsModal()}
     </header>
   );
 } 

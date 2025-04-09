@@ -79,10 +79,11 @@ export default function Chat() {
     }
   }, [messages]);
   
-  // Mock active users (in a real app, this would come from a backend/websocket)
-  const activeUsers = [
-    { id: currentUser?.id || 'user-1', name: currentUser?.name || 'Alex Johnson', avatar: currentUser?.avatar || '/avatars/alex.jpg' },
-    ...employees.slice(0, 3).map(emp => ({ id: emp.id, name: emp.name, avatar: emp.avatar }))
+  // Temporary user structure - this would normally be fetched from context
+  const mockUsers = [
+    { id: currentUser?.id || 'user-1', name: currentUser?.name || 'Alex Johnson', avatar: currentUser?.avatar || '/avatar-placeholder.png' },
+    { id: 'user-2', name: 'Emma Wilson', avatar: '/avatar-placeholder.png' },
+    { id: 'user-3', name: 'Michael Brown', avatar: '/avatar-placeholder.png' }
   ];
 
   // Scroll to bottom when messages change
@@ -350,25 +351,25 @@ export default function Chat() {
       <div className="border-b border-gray-100 dark:border-dark-border px-4 py-3 flex items-center justify-between">
         <h2 className="text-sm font-medium text-gray-900 dark:text-white flex items-center">
           <MessagesSquare className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
-          Team Chat • {activeUsers.length} online
+          Team Chat • {mockUsers.length} online
         </h2>
         <div className="flex -space-x-2">
-          {activeUsers.slice(0, 3).map((user, index) => (
+          {mockUsers.slice(0, 3).map((user, index) => (
             <div 
               key={user.id}
               className={`h-6 w-6 rounded-full border-2 border-white dark:border-dark-card flex items-center justify-center text-white text-xs`}
               style={{ 
                 backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b'][index % 4],
-                zIndex: activeUsers.length - index
+                zIndex: mockUsers.length - index
               }}
               title={user.name}
             >
               {getInitials(user.name)}
             </div>
           ))}
-          {activeUsers.length > 3 && (
+          {mockUsers.length > 3 && (
             <div className="h-6 w-6 rounded-full bg-gray-500 border-2 border-white dark:border-dark-card flex items-center justify-center text-white text-xs">
-              +{activeUsers.length - 3}
+              +{mockUsers.length - 3}
             </div>
           )}
         </div>
@@ -538,7 +539,7 @@ export default function Chat() {
       {/* Online users */}
       <div className="border-t border-gray-100 dark:border-dark-border p-2 overflow-x-auto hide-scrollbar">
         <div className="flex space-x-2">
-          {activeUsers.map(user => (
+          {mockUsers.map(user => (
             <div key={user.id} className="flex flex-col items-center">
               <div className="relative">
                 <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center">

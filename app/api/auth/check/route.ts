@@ -1,130 +1,242 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { Employee, User } from '@prisma/client';
 
 /**
- * Auth Check API
- * Diagnostic endpoint to check authentication status and provide detailed information
- * about session state and user data for debugging authentication issues.
+ * Authentication check endpoint that provides detailed diagnostic information
+ * about the current session status. This can be used for troubleshooting
+ * authentication issues or implementing client-side session handling.
  */
+
+// Define a minimal type for diagnostics to avoid 'any'
+type AuthDiagnostics = {
+  cookies: {
+    sessionToken: boolean;
+    employeeSessionToken: boolean;
+    authType: string | null;
+    allCookies: string[];
+  };
+  sessionCheck: Record<string, unknown> | null;
+  timestamp: string;
+};
+
+// Define proper types for the diagnostics information
+interface CookieDiagnostics {
+  sessionToken: boolean;
+  employeeSessionToken: boolean;
+  authType: string | null;
+  allCookies: string[];
+}
+
+interface SessionCheckDiagnostics {
+  valid: boolean;
+  type: 'employee' | 'user';
+  name?: string;
+  email?: string;
+  expires?: Date;
+  reason?: string;
+  expiredAt?: Date;
+  error?: string;
+}
+
+// Define session types that include the relations
+interface SessionWithEmployee {
+  id: string;
+  userId: string;
+  expires: Date;
+  createdAt: Date;
+  employee: Employee | null;
+  employeeId: string | null;
+}
+
+interface SessionWithUser {
+  id: string;
+  userId: string;
+  expires: Date;
+  createdAt: Date;
+  user: User | null;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    console.log('Auth check endpoint called');
-    
-    // Get all cookies for diagnostic purposes
-    const allCookies = request.cookies.getAll().map(c => c.name);
-    
-    // Check for both authentication methods
-    const userSessionToken = 
-      request.cookies.get('session-token')?.value || 
-      request.cookies.get('session_token')?.value;
-    
+    // Extract cookies
+    const sessionToken = request.cookies.get('session-token')?.value;
     const employeeSessionToken = request.cookies.get('employee-session')?.value;
+    const authTypeCookie = request.cookies.get('auth_type')?.value;
     
-    console.log('Auth check: Cookies found:', {
-      userSessionToken: !!userSessionToken,
-      employeeSessionToken: !!employeeSessionToken,
-      allCookies
+    // Log debugging information
+    console.log('Auth Check: Received request with cookies:', {
+      hasSessionToken: !!sessionToken,
+      hasEmployeeSessionToken: !!employeeSessionToken,
+      authTypeCookie,
+      allCookies: request.cookies.getAll().map(c => c.name),
     });
     
-    // Diagnostics object to return
-    const diagnostics: Record<string, any> = {
-      cookies: allCookies,
-      userSessionExists: !!userSessionToken,
-      employeeSessionExists: !!employeeSessionToken,
-      timestamp: new Date().toISOString()
+    // Diagnostic info to return
+    const diagnostics: AuthDiagnostics = {
+      cookies: {
+        sessionToken: !!sessionToken,
+        employeeSessionToken: !!employeeSessionToken,
+        authType: authTypeCookie || null,
+        allCookies: request.cookies.getAll().map(c => c.name),
+      },
+      sessionCheck: null,
+      timestamp: new Date().toISOString(),
     };
     
-    // Try to get user data from standard session
-    let userData = null;
-    let authMethod = null;
-    
-    if (userSessionToken) {
+    // First try employee authentication (if we have that cookie)
+    if (employeeSessionToken) {
       try {
-        console.log('Auth check: Looking up user session with token:', userSessionToken.substring(0, 8) + '...');
+        console.log('Auth Check: Checking employee session:', employeeSessionToken.substring(0, 8) + '...');
         
-        const session = await prisma.session.findUnique({
-          where: { id: userSessionToken },
-          include: { user: true },
-        });
-        
-        if (session && session.user) {
-          if (session.expires > new Date()) {
-            const { password, ...userWithoutPassword } = session.user;
-            userData = userWithoutPassword;
-            authMethod = 'standard';
-            console.log('Auth check: Valid user session found for:', userData.name);
-          } else {
-            console.log('Auth check: User session expired');
-            diagnostics.userSessionExpired = true;
-          }
-        } else {
-          console.log('Auth check: User session not found in database');
-          diagnostics.userSessionInvalid = true;
-        }
-      } catch (error) {
-        console.error('Auth check: Error looking up user session:', error);
-        diagnostics.userSessionError = (error as Error).message;
-      }
-    }
-    
-    // If user auth failed, try checking for employee in database directly
-    if (!userData && employeeSessionToken) {
-      try {
-        console.log('Auth check: Looking up employee session with token:', employeeSessionToken.substring(0, 8) + '...');
-        
-        // Find session in database
-        const session = await prisma.session.findUnique({
+        // Check for employee session
+        const employeeSession = await prisma.session.findUnique({
           where: { id: employeeSessionToken },
+          include: { 
+            employee: true 
+          }
         });
         
-        if (session && session.expires > new Date()) {
-          // If session is valid, try to find the employee by checking if employeeId exists in the session
-          if ('employeeId' in session && session.employeeId) {
-            const employee = await prisma.employee.findUnique({
-              where: { id: session.employeeId as string },
-              include: { department: true }
-            });
+        if (employeeSession && employeeSession.employee) {
+          // Check session expiration
+          if (employeeSession.expires > new Date()) {
+            // Valid employee session
+            const employee = employeeSession.employee;
             
-            if (employee) {
-              // If password exists on employee, exclude it
-              if ('password' in employee) {
-                const { password, ...employeeWithoutPassword } = employee as any;
-                userData = employeeWithoutPassword;
-              } else {
-                userData = employee;
-              }
-              authMethod = 'employee';
-              console.log('Auth check: Valid employee found for employeeId:', session.employeeId);
-            }
+            console.log('Auth Check: Found valid employee session for:', employee.name);
+            
+            diagnostics.sessionCheck = {
+              valid: true,
+              type: 'employee',
+              name: employee.name,
+              email: employee.email,
+              expires: employeeSession.expires,
+            };
+            
+            return NextResponse.json({
+              status: 'authenticated',
+              user: {
+                id: employee.id,
+                name: employee.name,
+                email: employee.email,
+                role: employee.role || 'employee',
+                type: 'employee'
+              },
+              diagnostics,
+            });
+          } else {
+            // Expired session
+            console.log('Auth Check: Employee session expired:', employeeSession.expires);
+            diagnostics.sessionCheck = {
+              valid: false,
+              type: 'employee',
+              reason: 'expired',
+              expiredAt: employeeSession.expires,
+            };
           }
         } else {
-          console.log('Auth check: Employee session expired or not found');
-          diagnostics.employeeSessionInvalid = true;
+          // Invalid session
+          console.log('Auth Check: Employee session not found or missing employee reference');
+          diagnostics.sessionCheck = {
+            valid: false,
+            type: 'employee',
+            reason: 'not_found',
+          };
         }
       } catch (error) {
-        console.error('Auth check: Error looking up employee session:', error);
-        diagnostics.employeeSessionError = (error as Error).message;
+        // Error checking employee session
+        console.error('Auth Check: Error verifying employee session:', error);
+        diagnostics.sessionCheck = {
+          valid: false,
+          type: 'employee',
+          reason: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
     }
     
-    // Return detailed diagnostic information
-    const status = userData ? 'authenticated' : 'unauthenticated';
+    // If employee auth failed, try standard user auth
+    if (sessionToken) {
+      try {
+        console.log('Auth Check: Checking user session:', sessionToken.substring(0, 8) + '...');
+        
+        const userSession = await prisma.session.findUnique({
+          where: { id: sessionToken },
+          include: { user: true }
+        });
+        
+        if (userSession && userSession.user) {
+          // Check session expiration
+          if (userSession.expires > new Date()) {
+            const user = userSession.user;
+            
+            console.log('Auth Check: Found valid user session for:', user.name);
+            
+            // Valid user session
+            diagnostics.sessionCheck = {
+              valid: true,
+              type: 'user',
+              name: user.name,
+              email: user.email,
+              expires: userSession.expires,
+            };
+            
+            return NextResponse.json({
+              status: 'authenticated',
+              user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role || 'user',
+                type: 'user'
+              },
+              diagnostics,
+            });
+          } else {
+            // Expired session
+            console.log('Auth Check: User session expired:', userSession.expires);
+            diagnostics.sessionCheck = {
+              valid: false,
+              type: 'user',
+              reason: 'expired',
+              expiredAt: userSession.expires,
+            };
+          }
+        } else {
+          // Invalid session
+          console.log('Auth Check: User session not found or missing user reference');
+          diagnostics.sessionCheck = {
+            valid: false,
+            type: 'user',
+            reason: 'not_found',
+          };
+        }
+      } catch (error) {
+        // Error checking user session
+        console.error('Auth Check: Error verifying user session:', error);
+        diagnostics.sessionCheck = {
+          valid: false,
+          type: 'user',
+          reason: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
     
+    // If we get here, both auth methods failed or were not attempted
+    console.log('Auth Check: No valid session found');
     return NextResponse.json({
-      status,
-      authMethod,
-      user: userData,
-      diagnostics
-    });
+      status: 'unauthenticated',
+      message: 'No valid session found',
+      diagnostics,
+    }, { status: 401 });
   } catch (error) {
     console.error('Auth check error:', error);
-    return NextResponse.json(
-      { 
-        status: 'error',
-        message: 'Failed to check authentication status',
-        error: (error as Error).message
-      },
-      { status: 500 }
-    );
+    
+    return NextResponse.json({
+      status: 'error',
+      message: 'Error checking authentication status',
+      error: error instanceof Error ? error.message : String(error),
+    }, { status: 500 });
   }
 } 

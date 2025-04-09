@@ -805,21 +805,65 @@ export const messagesAPI = {
 // Notifications API functions
 export const notificationsAPI = {
   // Get all notifications with optional filtering
-  async getAll(options: { limit?: number; page?: number; unreadOnly?: boolean } = {}): Promise<any> {
+  async getAll(options: { 
+    limit?: number; 
+    page?: number; 
+    unreadOnly?: boolean;
+    after?: string;
+    groupBy?: 'type' | 'date' | 'none';
+  } = {}): Promise<any> {
     try {
-      const { limit = 50, page = 1, unreadOnly = false } = options;
-      let url = `/notifications?limit=${limit}&page=${page}`;
+      const { 
+        limit = 50, 
+        page = 1, 
+        unreadOnly = false, 
+        after = null,
+        groupBy = 'none'
+      } = options;
+      
+      const params = new URLSearchParams({
+        limit: limit.toString(),
+        page: page.toString()
+      });
       
       if (unreadOnly) {
-        url += '&unreadOnly=true';
+        params.append('unreadOnly', 'true');
       }
       
-      const response = await fetchAPI(url);
+      if (after) {
+        params.append('after', after);
+      }
+      
+      if (groupBy !== 'none') {
+        params.append('groupBy', groupBy);
+      }
+      
+      const response = await fetchAPI(`/notifications?${params.toString()}`);
+      
       return response;
     } catch (error) {
       console.error('API: Error fetching notifications');
       // Return empty data to prevent breaking the UI
       return { notifications: [], pagination: { total: 0, page: 1, limit: 50, totalPages: 0 } };
+    }
+  },
+  
+  // Get notifications after a certain timestamp
+  async getAfterTimestamp(timestamp: string, options: { 
+    limit?: number;
+    unreadOnly?: boolean;
+  } = {}): Promise<any> {
+    try {
+      const { limit = 10, unreadOnly = true } = options;
+      
+      return this.getAll({
+        limit,
+        unreadOnly,
+        after: timestamp
+      });
+    } catch (error) {
+      console.error('API: Error fetching notifications after timestamp');
+      return { notifications: [], pagination: { total: 0, page: 1, limit: 10, totalPages: 0 } };
     }
   },
   
@@ -860,6 +904,17 @@ export const notificationsAPI = {
       return false;
     }
   },
+  
+  // Get notification counts (total and unread)
+  async getCounts(): Promise<{ total: number; unread: number }> {
+    try {
+      const response = await fetchAPI<{ total: number; unread: number }>('/notifications/counts');
+      return response;
+    } catch (error) {
+      console.error('API: Error getting notification counts');
+      return { total: 0, unread: 0 };
+    }
+  }
 };
 
 // Export all API services

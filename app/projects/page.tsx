@@ -30,7 +30,8 @@ import {
   FileText,
   PauseCircle,
   CheckCircle,
-  XCircle
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function ProjectsPage() {
@@ -51,6 +52,10 @@ export default function ProjectsPage() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   
+  // State for API operations
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   // Form data for adding/editing projects
   const [formData, setFormData] = useState<Partial<Project>>({
     name: '',
@@ -66,11 +71,31 @@ export default function ProjectsPage() {
     logs: []
   });
   
+  // Load projects from API
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/projects');
+        if (!response.ok) throw new Error('Failed to fetch projects');
+        const data = await response.json();
+        dispatch({ type: ACTIONS.SET_PROJECTS, payload: data });
+      } catch (err) {
+        setError('Failed to load projects. Please try again later.');
+        console.error('Error fetching projects:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, [dispatch]);
+  
   // Filter projects based on search term and filters
   const filteredProjects = projects.filter(project => {
     const matchesSearch = searchTerm === '' || 
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.description.toLowerCase().includes(searchTerm.toLowerCase());
+      (project.description && project.description.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = statusFilter === 'all' || project.status === statusFilter;
     
@@ -134,17 +159,20 @@ export default function ProjectsPage() {
       logs: []
     });
     setShowAddModal(true);
+    setError(null);
   };
 
   const handleEditProject = (project: Project) => {
     setSelectedProject(project);
     setFormData({ ...project });
     setShowEditModal(true);
+    setError(null);
   };
 
   const handleDeleteProject = (project: Project) => {
     setSelectedProject(project);
     setShowDeleteModal(true);
+    setError(null);
   };
 
   const handleViewDetails = (project: Project) => {
@@ -192,67 +220,137 @@ export default function ProjectsPage() {
   };
 
   // Submit handlers
-  const handleSubmitAddProject = (e: React.FormEvent) => {
+  const handleSubmitAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Create new project with a unique ID
-    const newProject: Project = {
-      id: `proj-${Date.now()}`,
-      name: formData.name || '',
-      description: formData.description || '',
-      departmentId: formData.departmentId || '',
-      teamMembers: formData.teamMembers || [],
-      startDate: formData.startDate || new Date().toISOString().split('T')[0],
-      dueDate: formData.dueDate || '',
-      status: formData.status as ProjectStatus || 'planning',
-      progress: formData.progress || 0,
-      priority: formData.priority as 'Low' | 'Medium' | 'High' | 'Urgent' || 'Medium',
-      budget: formData.budget,
-      logs: []
-    };
-    
-    // Add creation log
-    const logEntry = createLogEntry('Created project');
-    newProject.logs.push(logEntry);
-    
-    // Dispatch actions
-    dispatch({ type: ACTIONS.ADD_PROJECT, payload: newProject });
-    
-    // Close modal
-    setShowAddModal(false);
-  };
-
-  const handleSubmitEditProject = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (selectedProject && formData.id) {
-      // Create log for the edit action
-      const logEntry = createLogEntry('Updated project details');
+    try {
+      setIsLoading(true);
       
-      // Update project with log
-      dispatch({
-        type: ACTIONS.UPDATE_PROJECT,
-        payload: {
-          id: formData.id,
-          project: {
-            ...formData,
-            logs: [...(selectedProject.logs || []), logEntry]
-          }
-        }
+      // Prepare data for API
+      const projectData = {
+        name: formData.name,
+        description: formData.description,
+        status: formData.status,
+        progress: formData.progress,
+        startDate: formData.startDate,
+        endDate: formData.dueDate,  // API expects 'endDate'
+        budget: formData.budget,
+        priority: formData.priority?.toLowerCase(),
+        memberIds: formData.teamMembers, // API expects 'memberIds'
+        departmentId: formData.departmentId
+      };
+      
+      // Call API to create project
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(projectData),
       });
       
-      // Close modal
-      setShowEditModal(false);
+      if (!response.ok) {
+        throw new Error('Failed to create project');
+      }
+      
+      const newProject = await response.json();
+      
+      // Update local state with the new project
+      dispatch({ type: ACTIONS.ADD_PROJECT, payload: newProject });
+      setShowAddModal(false);
+      setError(null);
+    } catch (err) {
+      setError('Failed to create project. Please try again.');
+      console.error('Error creating project:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleConfirmDelete = () => {
+  const handleSubmitEditProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (selectedProject && formData.id) {
+      try {
+        setIsLoading(true);
+        
+        // Prepare data for API
+        const projectData = {
+          name: formData.name,
+          description: formData.description,
+          status: formData.status,
+          progress: formData.progress,
+          startDate: formData.startDate,
+          endDate: formData.dueDate,  // API expects 'endDate'
+          budget: formData.budget,
+          priority: formData.priority?.toLowerCase(),
+          memberIds: formData.teamMembers, // API expects 'memberIds'
+        };
+        
+        // Call API to update project
+        const response = await fetch(`/api/projects/${formData.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(projectData),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to update project');
+        }
+        
+        const updatedProject = await response.json();
+        
+        // Update local state with the updated project
+        dispatch({
+          type: ACTIONS.UPDATE_PROJECT,
+          payload: {
+            id: formData.id,
+            project: updatedProject
+          }
+        });
+        
+        setShowEditModal(false);
+        setError(null);
+      } catch (err) {
+        setError('Failed to update project. Please try again.');
+        console.error('Error updating project:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleConfirmDelete = async () => {
     if (selectedProject) {
-      dispatch({
-        type: ACTIONS.DELETE_PROJECT,
-        payload: selectedProject.id
-      });
-      setShowDeleteModal(false);
+      try {
+        setIsLoading(true);
+        
+        // Call API to delete project
+        const response = await fetch(`/api/projects/${selectedProject.id}`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to delete project');
+        }
+        
+        // Update local state
+        dispatch({
+          type: ACTIONS.DELETE_PROJECT,
+          payload: selectedProject.id
+        });
+        
+        setShowDeleteModal(false);
+        setError(null);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to delete project';
+        setError(errorMessage);
+        console.error('Error deleting project:', err);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -337,11 +435,19 @@ export default function ProjectsPage() {
           <button
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors dark:bg-blue-700 dark:hover:bg-blue-800"
             onClick={handleAddProject}
+            disabled={isLoading}
           >
             <PlusCircle className="h-4 w-4" />
             Add Project
           </button>
         </div>
+
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-md text-red-700 dark:text-red-400 flex items-start">
+            <AlertTriangle className="h-5 w-5 mr-2" />
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Filters and search */}
         <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm dark:shadow-card-dark mb-6 animate-slide-in">
@@ -408,118 +514,125 @@ export default function ProjectsPage() {
           </div>
 
           {/* Projects grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
-            {sortedProjects.map(project => {
-              const department = getDepartmentById(project.departmentId);
-              const daysLeft = Math.ceil((new Date(project.dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-              
-              return (
-                <div 
-                  key={project.id}
-                  className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 flex flex-col hover:shadow-md transition-shadow"
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-start">
-                      <div 
-                        className="w-10 h-10 rounded-md flex items-center justify-center mr-3 shrink-0" 
-                        style={{ backgroundColor: department?.color || '#64748b' }}
-                      >
-                        <FolderKanban className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">{project.name}</h3>
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          <StatusBadge status={project.status} />
-                          <PriorityBadge priority={project.priority} />
+          {isLoading && projects.length === 0 ? (
+            <div className="p-8 flex justify-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-e-transparent align-[-0.125em] text-blue-600 dark:text-blue-400 motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
+              {sortedProjects.map(project => {
+                const department = getDepartmentById(project.departmentId);
+                const daysLeft = Math.ceil((new Date(project.dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                
+                return (
+                  <div 
+                    key={project.id}
+                    className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 flex flex-col hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-start">
+                        <div 
+                          className="w-10 h-10 rounded-md flex items-center justify-center mr-3 shrink-0" 
+                          style={{ backgroundColor: department?.color || '#64748b' }}
+                        >
+                          <FolderKanban className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">{project.name}</h3>
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            <StatusBadge status={project.status} />
+                            <PriorityBadge priority={project.priority} />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex space-x-1">
-                      <button 
-                        className="p-1.5 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                        onClick={() => handleEditProject(project)}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button 
-                        className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
-                        onClick={() => handleDeleteProject(project)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-2">
-                    {project.description}
-                  </p>
-                  
-                  <div className="mt-auto space-y-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center text-gray-600 dark:text-gray-400">
-                        <Calendar className="h-4 w-4 mr-1.5" />
-                        <span>
-                          {daysLeft > 0 
-                            ? `${daysLeft} days left` 
-                            : daysLeft === 0 
-                              ? 'Due today' 
-                              : `${Math.abs(daysLeft)} days overdue`
-                          }
-                        </span>
-                      </div>
-                      <div className="flex items-center text-gray-600 dark:text-gray-400">
-                        <Users className="h-4 w-4 mr-1.5" />
-                        <span>{project.teamMembers.length}</span>
+                      <div className="flex space-x-1">
+                        <button 
+                          className="p-1.5 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => handleEditProject(project)}
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button 
+                          className="p-1.5 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => handleDeleteProject(project)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                     
-                    <div>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-600 dark:text-gray-400">Progress</span>
-                        <span className="font-medium text-gray-700 dark:text-gray-300">{project.progress}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div
-                          className="h-2 rounded-full"
-                          style={{ 
-                            width: `${project.progress}%`,
-                            backgroundColor: department?.color || '#3b82f6'
-                          }}
-                        ></div>
-                      </div>
-                    </div>
+                    <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-2">
+                      {project.description}
+                    </p>
                     
-                    <button
-                      className="w-full text-center py-2 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                      onClick={() => handleViewDetails(project)}
-                    >
-                      View Details
-                    </button>
+                    <div className="mt-auto space-y-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center text-gray-600 dark:text-gray-400">
+                          <Calendar className="h-4 w-4 mr-1.5" />
+                          <span>
+                            {daysLeft > 0 
+                              ? `${daysLeft} days left` 
+                              : daysLeft === 0 
+                                ? 'Due today' 
+                                : `${Math.abs(daysLeft)} days overdue`
+                            }
+                          </span>
+                        </div>
+                        <div className="flex items-center text-gray-600 dark:text-gray-400">
+                          <Users className="h-4 w-4 mr-1.5" />
+                          <span>{project.teamMembers.length}</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-gray-600 dark:text-gray-400">Progress</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{project.progress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div
+                            className="h-2 rounded-full"
+                            style={{ 
+                              width: `${project.progress}%`,
+                              backgroundColor: department?.color || '#3b82f6'
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                      
+                      <button
+                        className="w-full text-center py-2 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                        onClick={() => handleViewDetails(project)}
+                      >
+                        View Details
+                      </button>
+                    </div>
                   </div>
+                );
+              })}
+              
+              {sortedProjects.length === 0 && (
+                <div className="col-span-full py-8 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
+                  <FolderKanban className="h-12 w-12 mb-3 opacity-20" />
+                  <p>No projects found</p>
+                  <button 
+                    className="mt-3 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
+                    onClick={handleAddProject}
+                    disabled={isLoading}
+                  >
+                    <PlusCircle className="h-4 w-4 mr-1" />
+                    Add a project
+                  </button>
                 </div>
-              );
-            })}
-            
-            {sortedProjects.length === 0 && (
-              <div className="col-span-full py-12 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
-                <FolderKanban className="h-12 w-12 mb-3 opacity-20" />
-                <p>No projects found</p>
-                <button 
-                  className="mt-3 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center"
-                  onClick={handleAddProject}
-                >
-                  <PlusCircle className="h-4 w-4 mr-1" />
-                  Add a project
-                </button>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Add Project Modal */}
         {showAddModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl max-w-2xl w-full animate-scale-in max-h-[90vh] overflow-auto">
+            <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl max-w-2xl w-full animate-scale-in">
               <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-dark-border">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Create New Project</h2>
                 <button 
@@ -705,14 +818,23 @@ export default function ProjectsPage() {
                     type="button"
                     className="px-4 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
                     onClick={() => setShowAddModal(false)}
+                    disabled={isLoading}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 flex items-center"
+                    disabled={isLoading}
                   >
-                    Create Project
+                    {isLoading ? (
+                      <>
+                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      'Add Project'
+                    )}
                   </button>
                 </div>
               </form>
@@ -723,7 +845,7 @@ export default function ProjectsPage() {
         {/* Edit Project Modal */}
         {showEditModal && selectedProject && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl max-w-2xl w-full animate-scale-in max-h-[90vh] overflow-auto">
+            <div className="bg-white dark:bg-dark-card rounded-lg shadow-xl max-w-2xl w-full animate-scale-in">
               <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-dark-border">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Edit Project</h2>
                 <button 
@@ -909,14 +1031,23 @@ export default function ProjectsPage() {
                     type="button"
                     className="px-4 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
                     onClick={() => setShowEditModal(false)}
+                    disabled={isLoading}
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 flex items-center"
+                    disabled={isLoading}
                   >
-                    Save Changes
+                    {isLoading ? (
+                      <>
+                        <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
                   </button>
                 </div>
               </form>
@@ -943,14 +1074,23 @@ export default function ProjectsPage() {
                 <button
                   className="px-4 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
                   onClick={() => setShowDeleteModal(false)}
+                  disabled={isLoading}
                 >
                   Cancel
                 </button>
                 <button
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800"
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 flex items-center"
                   onClick={handleConfirmDelete}
+                  disabled={isLoading}
                 >
-                  Delete Project
+                  {isLoading ? (
+                    <>
+                      <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                      Deleting...
+                    </>
+                  ) : (
+                    'Delete Project'
+                  )}
                 </button>
               </div>
             </div>

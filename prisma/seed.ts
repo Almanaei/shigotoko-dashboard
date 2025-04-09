@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { hashPassword } from './utils';
 
 const prisma = new PrismaClient();
 
@@ -48,7 +49,7 @@ async function main() {
         position: 'Senior Developer',
         email: 'sarah.chen@shigotoko.com',
         phone: '+1 (555) 123-4567',
-        avatar: '/avatars/sarah.jpg',
+        avatar: '/avatar-placeholder.png',
         status: 'active',
         joinDate: new Date('2021-06-15'),
         performance: 90,
@@ -62,7 +63,7 @@ async function main() {
         position: 'Marketing Manager',
         email: 'john.smith@shigotoko.com',
         phone: '+1 (555) 234-5678',
-        avatar: '/avatars/john.jpg',
+        avatar: '/avatar-placeholder.png',
         status: 'active',
         joinDate: new Date('2022-01-10'),
         performance: 85,
@@ -76,7 +77,7 @@ async function main() {
         position: 'UI/UX Designer',
         email: 'emma.watson@shigotoko.com',
         phone: '+1 (555) 345-6789',
-        avatar: '/avatars/emma.jpg',
+        avatar: '/avatar-placeholder.png',
         status: 'active',
         joinDate: new Date('2022-03-22'),
         performance: 88,
@@ -90,7 +91,7 @@ async function main() {
         position: 'HR Specialist',
         email: 'michael.johnson@shigotoko.com',
         phone: '+1 (555) 456-7890',
-        avatar: '/avatars/michael.jpg',
+        avatar: '/avatar-placeholder.png',
         status: 'active',
         joinDate: new Date('2021-11-05'),
         performance: 82,
@@ -104,7 +105,7 @@ async function main() {
         position: 'Backend Developer',
         email: 'david.lee@shigotoko.com',
         phone: '+1 (555) 567-8901',
-        avatar: '/avatars/david.jpg',
+        avatar: '/avatar-placeholder.png',
         status: 'active',
         joinDate: new Date('2022-02-15'),
         performance: 87,
@@ -140,7 +141,7 @@ async function main() {
       data: {
         name: 'Alex Johnson',
         email: 'alex.johnson@shigotoko.com',
-        avatar: '/avatars/alex.jpg',
+        avatar: '/avatar-placeholder.png',
         role: 'admin',
         department: 'Engineering',
       }
@@ -414,6 +415,93 @@ async function main() {
     throw error;
   } finally {
     await prisma.$disconnect();
+  }
+}
+
+export async function seedEmployees() {
+  try {
+    const department = await prisma.department.findFirst({
+      where: { name: 'Engineering' }
+    });
+
+    if (!department) {
+      throw new Error('Department not found');
+    }
+
+    await prisma.employee.createMany({
+      data: [
+        {
+          name: 'Sarah Johnson',
+          position: 'Lead Developer',
+          departmentId: department.id,
+          email: 'sarah@example.com',
+          phone: '+1 (555) 123-4567',
+          avatar: '/avatar-placeholder.png',
+          status: 'active',
+          joinDate: new Date('2022-01-10'),
+          performance: 90,
+        },
+        {
+          name: 'Michael Brown',
+          position: 'Frontend Developer',
+          departmentId: department.id,
+          email: 'michael@example.com',
+          phone: '+1 (555) 987-6543',
+          avatar: '/avatar-placeholder.png',
+          status: 'active',
+          joinDate: new Date('2022-03-15'),
+          performance: 85,
+        },
+        {
+          name: 'Emma Davis',
+          position: 'Backend Developer',
+          departmentId: department.id,
+          email: 'emma@example.com',
+          phone: '+1 (555) 456-7890',
+          avatar: '/avatar-placeholder.png',
+          status: 'on-leave',
+          joinDate: new Date('2022-05-20'),
+          performance: 88,
+        },
+        {
+          name: 'David Wilson',
+          position: 'QA Engineer',
+          departmentId: department.id,
+          email: 'david@example.com',
+          phone: '+1 (555) 321-6547',
+          avatar: '/avatar-placeholder.png',
+          status: 'active',
+          joinDate: new Date('2022-07-05'),
+          performance: 82,
+        },
+      ],
+      skipDuplicates: true,
+    });
+
+    console.log('Employees seeded successfully');
+  } catch (error) {
+    console.error('Error seeding employees:', error);
+  }
+}
+
+export async function seedUsers() {
+  try {
+    // Create admin user
+    await prisma.user.upsert({
+      where: { email: 'alex@example.com' },
+      create: {
+        name: 'Alex Smith',
+        email: 'alex@example.com',
+        password: await hashPassword('password123'),
+        role: 'Admin',
+        avatar: '/avatar-placeholder.png',
+      },
+      update: {},
+    });
+
+    console.log('Users seeded successfully');
+  } catch (error) {
+    console.error('Error seeding users:', error);
   }
 }
 

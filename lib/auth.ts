@@ -55,7 +55,7 @@ export async function verifySessionForEmployee(sessionToken: string | null) {
     
     return session.employee;
   } catch (error) {
-    console.error('Error verifying employee session:', error);
+    console.error('Error verifying employee session');
     return null;
   }
 }
@@ -85,7 +85,7 @@ export async function verifySessionForUser(sessionToken: string | null) {
     
     return session.user;
   } catch (error) {
-    console.error('Error verifying user session:', error);
+    console.error('Error verifying user session');
     return null;
   }
 }
