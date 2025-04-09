@@ -115,7 +115,20 @@ export default function SearchModal() {
   // Handle search result click
   const handleResultClick = (result: SearchResult) => {
     closeSearch();
-    router.push(result.url);
+    
+    // Ensure URL exists before navigation
+    if (result.url) {
+      if (result.type === 'project' || result.type === 'document') {
+        // For projects and documents that use query parameters
+        router.push(result.url);
+      } else if (result.type === 'employee' || result.type === 'department') {
+        // For employees and departments that use dynamic routes
+        router.push(result.url);
+      } else {
+        // Fallback for any other result types
+        router.push(result.url);
+      }
+    }
   };
   
   // Get icon component for result type

@@ -2,10 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
 // GET all departments
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const departments = await prisma.department.findMany();
-    return NextResponse.json(departments);
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get('search');
+    
+    let whereClause: any = {};
+    
+    // Add search filter if provided
+    if (search && search.trim()) {
+      whereClause.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+    
+    const departments = await prisma.department.findMany({
+      where: whereClause,
+      // Limit results for search queries
+      ...(search ? { take: 10 } : {}),
+    });
+    
+    return NextResponse.json({ departments, total: departments.length });
   } catch (error) {
     console.error('Error fetching departments:', error);
     return NextResponse.json(

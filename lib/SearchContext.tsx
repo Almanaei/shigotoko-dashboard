@@ -149,6 +149,52 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         // No fallback needed as departments are less critical
       }
       
+      // Add projects search - direct to projects page with filter
+      if (dashboardState?.projects && Array.isArray(dashboardState.projects)) {
+        dashboardState.projects
+          .filter(project => 
+            project.id && 
+            project.name && 
+            (project.name.toLowerCase().includes(lowerQuery) || 
+             project.description?.toLowerCase().includes(lowerQuery))
+          )
+          .slice(0, 3)
+          .forEach(project => {
+            searchResults.push({
+              id: project.id,
+              type: 'project',
+              title: project.name,
+              description: project.description || `Project due on ${new Date(project.dueDate).toLocaleDateString()}`,
+              icon: '📂',
+              url: `/projects?id=${project.id}`,
+              relevance: 2,
+            });
+          });
+      }
+      
+      // Add documents search - direct to documents page with filter
+      if (dashboardState?.documents && Array.isArray(dashboardState.documents)) {
+        dashboardState.documents
+          .filter(doc => 
+            doc.id && 
+            doc.name && 
+            (doc.name.toLowerCase().includes(lowerQuery) || 
+             doc.description?.toLowerCase().includes(lowerQuery))
+          )
+          .slice(0, 3)
+          .forEach(doc => {
+            searchResults.push({
+              id: doc.id,
+              type: 'document',
+              title: doc.name,
+              description: doc.description || `Created on ${doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : 'unknown date'}`,
+              icon: '📄',
+              url: `/documents?id=${doc.id}`,
+              relevance: 1.5,
+            });
+          });
+      }
+      
       // Sort by relevance
       searchResults.sort((a, b) => b.relevance - a.relevance);
       
