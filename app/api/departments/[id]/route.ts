@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
 // GET a single department by ID
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
+  
   try {
     const department = await prisma.department.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         employees: true,
       },
@@ -26,7 +23,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     
     return NextResponse.json(department);
   } catch (error) {
-    console.error(`Error fetching department with ID ${params.id}:`, error);
+    console.error(`Error fetching department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to fetch department' },
       { status: 500 }
@@ -35,13 +32,16 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // UPDATE a department
-export async function PUT(request: NextRequest, { params }: Params) {
+export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
+  
   try {
     const body = await request.json();
     
     // Check if department exists
     const department = await prisma.department.findUnique({
-      where: { id: params.id }
+      where: { id }
     });
     
     if (!department) {
@@ -53,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     
     // Update department
     const updatedDepartment = await prisma.department.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name: body.name !== undefined ? body.name : undefined,
         description: body.description !== undefined ? body.description : undefined,
@@ -63,7 +63,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     
     return NextResponse.json(updatedDepartment);
   } catch (error) {
-    console.error(`Error updating department with ID ${params.id}:`, error);
+    console.error(`Error updating department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to update department' },
       { status: 500 }
@@ -72,11 +72,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 // DELETE a department
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
+  
   try {
     // Check if department exists
     const department = await prisma.department.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { employees: true }
     });
     
@@ -97,7 +100,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     
     // Delete the department
     await prisma.department.delete({
-      where: { id: params.id }
+      where: { id }
     });
     
     return NextResponse.json(
@@ -105,7 +108,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       { status: 200 }
     );
   } catch (error) {
-    console.error(`Error deleting department with ID ${params.id}:`, error);
+    console.error(`Error deleting department with ID ${id}:`, error);
     return NextResponse.json(
       { error: 'Failed to delete department' },
       { status: 500 }

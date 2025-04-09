@@ -3,24 +3,21 @@ import prisma from '@/lib/prisma';
 import { createSuccessResponse, withErrorHandling, errors } from '@/lib/api-utils';
 import { cookies } from 'next/headers';
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
 // GET a single employee by ID
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
+  
   return withErrorHandling(async () => {
     const employee = await prisma.employee.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         department: true,
       },
     });
     
     if (!employee) {
-      return errors.notFound('Employee', params.id);
+      return errors.notFound('Employee', id);
     }
     
     // If employee has password, exclude it from the response
@@ -35,11 +32,14 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // UPDATE an employee
-export async function PUT(request: NextRequest, { params }: Params) {
+export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
+  
   return withErrorHandling(async () => {
     const body = await request.json();
     
-    console.log(`Employee API: Update request for ID: ${params.id}`, {
+    console.log(`Employee API: Update request for ID: ${id}`, {
       fields: Object.keys(body),
       hasAvatar: !!body.avatar,
       avatarType: body.avatar ? (
@@ -51,12 +51,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
     
     // Check if employee exists
     const existingEmployee = await prisma.employee.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { department: true }
     });
     
     if (!existingEmployee) {
-      return errors.notFound('Employee', params.id);
+      return errors.notFound('Employee', id);
     }
     
     // Check if department is being changed
@@ -97,14 +97,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
     
     // Update employee
     const updatedEmployee = await prisma.employee.update({
-      where: { id: params.id },
+      where: { id },
       data: updateData,
       include: {
         department: true,
       },
     });
     
-    console.log(`Employee API: Update successful for ID: ${params.id}`, {
+    console.log(`Employee API: Update successful for ID: ${id}`, {
       name: updatedEmployee.name,
       hasAvatar: !!updatedEmployee.avatar,
       avatarType: updatedEmployee.avatar ? (
@@ -207,21 +207,24 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 // DELETE an employee
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
+  
   return withErrorHandling(async () => {
     // Check if employee exists
     const employee = await prisma.employee.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { department: true }
     });
     
     if (!employee) {
-      return errors.notFound('Employee', params.id);
+      return errors.notFound('Employee', id);
     }
     
     // Delete the employee
     await prisma.employee.delete({
-      where: { id: params.id }
+      where: { id }
     });
     
     // Decrement the department's employee count
@@ -234,6 +237,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       }
     });
     
-    return createSuccessResponse({ message: `Employee ${params.id} deleted successfully` });
+    return createSuccessResponse({ message: `Employee ${id} deleted successfully` });
   });
 } 

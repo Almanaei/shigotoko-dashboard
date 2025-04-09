@@ -2,15 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { PrismaClient, Prisma } from '@prisma/client';
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
 // GET a single project by ID
-export async function GET(request: NextRequest, { params }: Params) {
-  const id = params.id;
+export async function GET(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
   
   try {
     const project = await prisma.project.findUnique({
@@ -48,8 +43,9 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // UPDATE a project
-export async function PUT(request: NextRequest, { params }: Params) {
-  const id = params.id;
+export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
   
   try {
     const body = await request.json();
@@ -156,8 +152,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 // DELETE a project
-export async function DELETE(request: NextRequest, { params }: Params) {
-  const id = params.id;
+export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+  // Properly extract params to avoid the Next.js warning
+  const { id } = context.params;
   
   try {
     // Check if project exists
