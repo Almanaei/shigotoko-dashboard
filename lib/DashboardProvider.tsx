@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState, useRef } from 'react';
 import { API } from '@/lib/api';
+import { useAuth } from '@/lib/AuthProvider';
+import { updateCachedDashboardData, clearCachedDashboardData } from '@/lib/cacheData';
 
 // Types
 export interface User {
@@ -86,14 +88,17 @@ export interface Document {
   name: string;
   fileType: string;
   size: number;
-  uploadedBy: string;
+  uploadedBy: string | Employee;
   uploadedById: string;
-  uploadDate: string;
+  uploadDate?: string; // This is used in UI but not in DB
   url: string;
-  sharedWith: string[]; // Array of user IDs
-  projectId?: string; // Optional connection to a project
+  sharedWith: Employee[] | { id: string; name: string; }[] | string[]; // Array of employee objects or IDs
+  projectId?: string;
+  project?: Project;
   description?: string;
   tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Project {
@@ -801,6 +806,48 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     };
   }, [state.currentUser]);
   
+  // Whenever state changes, update the cached data
+  useEffect(() => {
+    if (state.initialized) {
+      updateCachedDashboardData(state);
+    }
+  }, [
+    state.employees, 
+    state.departments, 
+    state.projects, 
+    state.tasks, 
+    state.documents, 
+    state.messages, 
+    state.initialized
+  ]);
+  
+  // Initialize data
+  useEffect(() => {
+    if (!state.initialized && !state.loading) {
+      dispatch({ type: ACTIONS.SET_LOADING, payload: true });
+      initializeData(dispatch)
+        .then(() => {
+          dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+          dispatch({ type: ACTIONS.SET_INITIALIZED, payload: true });
+        })
+        .catch(error => {
+          console.error('Failed to initialize dashboard data:', error);
+          dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load dashboard data' });
+          dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+        });
+    }
+  }, [state.initialized, state.loading]);
+  
+  // Clear cache on logout
+  const { state: authState } = useAuth();
+  
+  useEffect(() => {
+    // If user is logged out, clear cached data
+    if (!authState.user) {
+      clearCachedDashboardData();
+    }
+  }, [authState.user]);
+  
   return (
     <DashboardContext.Provider value={{ state, dispatch }}>
       {children}
@@ -895,15 +942,45 @@ async function initializeData(dispatch: DashboardDispatch) {
       });
     }
     
-    // For now, keep using mock data for notifications
-    // TODO: Implement real API endpoints for these
-    
-    // Mock notifications
-    const mockNotifications = generateMockNotifications();
-    dispatch({ 
-      type: ACTIONS.SET_NOTIFICATIONS, 
-      payload: mockNotifications 
-    });
+    // Fetch real notifications instead of using mock data
+    try {
+      const response = await fetch('/api/notifications?limit=10');
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.notifications && Array.isArray(data.notifications)) {
+          // Format notifications for our state
+          const formattedNotifications = data.notifications.map((notif: any) => ({
+            id: notif.id,
+            title: notif.title,
+            description: notif.message,
+            timestamp: notif.createdAt,
+            type: notif.type as 'message' | 'alert' | 'update',
+            read: notif.read
+          }));
+          
+          dispatch({ 
+            type: ACTIONS.SET_NOTIFICATIONS, 
+            payload: formattedNotifications 
+          });
+        }
+      } else {
+        console.error('Error fetching notifications:', response.status);
+        // Fall back to empty notifications array
+        dispatch({ 
+          type: ACTIONS.SET_NOTIFICATIONS, 
+          payload: [] 
+        });
+      }
+    } catch (notificationsError) {
+      console.error('Error fetching notifications:', notificationsError);
+      // Fall back to empty notifications array
+      dispatch({ 
+        type: ACTIONS.SET_NOTIFICATIONS, 
+        payload: [] 
+      });
+    }
     
   } catch (error) {
     console.error('Error initializing data:', error);
@@ -1346,12 +1423,40 @@ const fetchDashboardData = (dispatch: DashboardDispatch, isEmployee: boolean = f
     }
   });
   
-  // Mock notifications
-  const mockNotifications = generateMockNotifications();
-  dispatch({ 
-    type: ACTIONS.SET_NOTIFICATIONS, 
-    payload: mockNotifications 
-  });
+  // Fetch real notifications
+  fetch('/api/notifications')
+    .then(response => {
+      if (response.ok) {
+        return response.json();
+      }
+      throw new Error('Failed to fetch notifications');
+    })
+    .then(data => {
+      if (data.notifications && Array.isArray(data.notifications)) {
+        // Format notifications for our state
+        const formattedNotifications = data.notifications.map((notif: any) => ({
+          id: notif.id,
+          title: notif.title,
+          description: notif.message,
+          timestamp: notif.createdAt,
+          type: notif.type as 'message' | 'alert' | 'update',
+          read: notif.read
+        }));
+        
+        dispatch({ 
+          type: ACTIONS.SET_NOTIFICATIONS, 
+          payload: formattedNotifications 
+        });
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching notifications:', error);
+      // If API call fails, use empty notifications array
+      dispatch({ 
+        type: ACTIONS.SET_NOTIFICATIONS, 
+        payload: [] 
+      });
+    });
   
   // Mock stats with actual values
   const mockStats: Stats = {

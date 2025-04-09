@@ -21,9 +21,21 @@ async function fetchAPI<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
-  const defaultHeaders = {
-    'Content-Type': 'application/json',
-  };
+  // Initialize headers based on request body type
+  let defaultHeaders = {};
+  
+  // Don't set Content-Type header if FormData is being sent
+  // Let the browser set it automatically with the boundary parameter
+  if (!(options.body instanceof FormData)) {
+    defaultHeaders = {
+      'Content-Type': 'application/json',
+    };
+  }
+  
+  // Add cache-busting timestamp to prevent cached responses
+  const timestampedUrl = url.includes('?') 
+    ? `${url}&_t=${Date.now()}` 
+    : `${url}?_t=${Date.now()}`;
   
   // Check if we need to refresh the session before making a critical request
   if (endpoint === '/user' || endpoint.startsWith('/employees/')) {
@@ -35,11 +47,15 @@ async function fetchAPI<T>(
     }
   }
   
-  const response = await fetch(url, {
+  console.log(`API: Fetching ${options.method || 'GET'} ${timestampedUrl}`);
+  
+  const response = await fetch(timestampedUrl, {
     ...options,
     headers: {
       ...defaultHeaders,
       ...options.headers,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
     },
     credentials: 'include', // Always include credentials for cookie authentication
   });
@@ -53,6 +69,8 @@ async function fetchAPI<T>(
   }
   
   if (!response.ok) {
+    console.warn(`API: Error response from ${endpoint}:`, response.status, data);
+    
     // Special handling for authentication endpoints
     if (endpoint === '/auth' && response.status === 401) {
       console.log('API: Auth check failed, user not authenticated');
@@ -100,6 +118,7 @@ async function fetchAPI<T>(
     throw new Error(data.error || 'An error occurred while fetching the data');
   }
   
+  console.log(`API: Successful response from ${endpoint}`);
   return data as T;
 }
 
@@ -117,13 +136,20 @@ async function refreshSession(): Promise<boolean> {
     
     console.log('API: Refreshing session for auth type:', authType);
     
+    // Add cache busting
+    const timestamp = Date.now();
+    
     if (authType === 'employee') {
       // Special handling for employee session that may be expired
       try {
         // First try just a normal refresh
-        const response = await fetch('/api/auth/employee', {
+        const response = await fetch(`/api/auth/employee?_t=${timestamp}`, {
           method: 'GET',
           credentials: 'include',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
         });
         
         if (response.ok) {
@@ -135,16 +161,24 @@ async function refreshSession(): Promise<boolean> {
         console.log('API: Normal employee session refresh failed, attempting session recovery');
         
         // Try session recovery by visiting the specific auth recovery endpoint
-        const recoveryResponse = await fetch('/api/auth/set-cookies?type=employee&action=recover', {
+        const recoveryResponse = await fetch(`/api/auth/set-cookies?type=employee&action=recover&_t=${timestamp}`, {
           credentials: 'include',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
         });
         
         if (recoveryResponse.ok) {
           console.log('API: Employee session recovery successful');
           // Try once more to refresh after recovery
-          const secondAttempt = await fetch('/api/auth/employee', {
+          const secondAttempt = await fetch(`/api/auth/employee?_t=${timestamp}`, {
             method: 'GET',
             credentials: 'include',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+            }
           });
           
           if (secondAttempt.ok) {
@@ -164,9 +198,13 @@ async function refreshSession(): Promise<boolean> {
     } else {
       // Standard user auth refresh
       try {
-        const response = await fetch('/api/auth', {
+        const response = await fetch(`/api/auth?_t=${timestamp}`, {
           method: 'GET',
           credentials: 'include',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
         });
         
         if (response.ok) {
@@ -178,15 +216,23 @@ async function refreshSession(): Promise<boolean> {
         console.log('API: Normal user session refresh failed, attempting session recovery');
         
         // Try session recovery via the set-cookies endpoint
-        const recoveryResponse = await fetch('/api/auth/set-cookies?type=user&action=recover', {
+        const recoveryResponse = await fetch(`/api/auth/set-cookies?type=user&action=recover&_t=${timestamp}`, {
           credentials: 'include',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+          }
         });
         
         if (recoveryResponse.ok) {
           // Try one more API call after recovery
-          const secondAttempt = await fetch('/api/auth', {
+          const secondAttempt = await fetch(`/api/auth?_t=${timestamp}`, {
             method: 'GET',
             credentials: 'include',
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+            }
           });
           
           if (secondAttempt.ok) {
@@ -269,6 +315,51 @@ export const authAPI = {
     try {
       console.log(`API: Fetching current user... ${retryCount > 0 ? `(Retry ${retryCount})` : ''}`);
       
+      // Determine auth type
+      let authType = 'user';
+      if (typeof localStorage !== 'undefined') {
+        authType = localStorage.getItem('authType') || 'user';
+      }
+      if (typeof document !== 'undefined') {
+        const hasEmployeeCookie = document.cookie.split(';').some(c => 
+          c.trim().startsWith('employee-session='));
+        
+        if (hasEmployeeCookie) {
+          authType = 'employee';
+          // Update localStorage for consistency
+          localStorage.setItem('authType', 'employee');
+        }
+      }
+      
+      console.log('API: Detected auth type:', authType);
+      
+      // Try the appropriate endpoint based on auth type
+      if (authType === 'employee') {
+        try {
+          const response = await fetch('/api/auth/employee', {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+            }
+          });
+          
+          if (response.ok) {
+            const employee = await response.json();
+            console.log('API: Current employee fetched successfully:', employee.name);
+            return employee;
+          } else {
+            console.log('API: Employee auth failed, status:', response.status);
+            // If employee auth fails, try standard user auth as fallback
+          }
+        } catch (employeeError) {
+          console.error('API: Error fetching employee:', employeeError);
+          // Continue to standard user auth as fallback
+        }
+      }
+      
+      // Standard user auth (or fallback)
       // Check if we have a session cookie on the client before making the API call
       if (typeof document !== 'undefined') {
         const hasSessionCookie = document.cookie.split(';').some(c => 
@@ -286,8 +377,14 @@ export const authAPI = {
       // Add timestamp to avoid caching issues with the auth endpoint
       const timestamp = Date.now();
       const user = await fetchAPI<User>(`/auth?_t=${timestamp}`);
-      console.log('API: Current user fetched successfully:', user);
-      return user;
+      
+      if (user) {
+        console.log('API: Current user fetched successfully:', user.name);
+        return user;
+      } else {
+        console.log('API: Auth endpoint returned null user');
+        return null;
+      }
     } catch (error) {
       console.log('API: Error getting current user:', error);
       
@@ -329,9 +426,54 @@ export const authAPI = {
   // Get user profile
   getProfile: async (): Promise<User | null> => {
     try {
-      return await fetchAPI<User>('/user');
+      // Determine if this is an employee or standard user
+      let isEmployee = false;
+      if (typeof localStorage !== 'undefined') {
+        isEmployee = localStorage.getItem('authType') === 'employee';
+      }
+      if (typeof document !== 'undefined') {
+        const hasEmployeeCookie = document.cookie.split(';').some(c => 
+          c.trim().startsWith('employee-session='));
+        isEmployee = hasEmployeeCookie;
+      }
+      
+      console.log('API: Getting profile for type:', isEmployee ? 'employee' : 'user');
+      
+      // Call appropriate endpoint
+      if (isEmployee) {
+        // Need to know employee ID for API call
+        const currentUser = await authAPI.getCurrentUser();
+        if (!currentUser || !currentUser.id) {
+          console.error('API: Cannot get employee profile without an ID');
+          return null;
+        }
+        
+        const timestamp = Date.now();
+        const response = await fetch(`/api/employees/${currentUser.id}?_t=${timestamp}`, {
+          credentials: 'include',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        });
+        
+        if (response.ok) {
+          const employee = await response.json();
+          console.log('API: Got employee profile:', employee.name);
+          return employee;
+        } else {
+          console.error('API: Failed to get employee profile, status:', response.status);
+          return null;
+        }
+      } else {
+        // Standard user profile
+        const timestamp = Date.now();
+        const user = await fetchAPI<User>(`/user?_t=${timestamp}`);
+        console.log('API: Got user profile:', user.name);
+        return user;
+      }
     } catch (error) {
-      console.log('Error getting user profile:', error);
+      console.error('API: Error getting user profile:', error);
       return null;
     }
   },
@@ -343,17 +485,55 @@ export const authAPI = {
       
       interface AuthCheckResult {
         status: string;
-        diagnostics?: any;
+        user?: {
+          id: string;
+          name: string;
+          email: string;
+          role?: string;
+          type: 'user' | 'employee';
+        };
+        diagnostics?: Record<string, unknown>;
         error?: string;
         message?: string;
       }
       
-      const result = await fetchAPI<AuthCheckResult>('/auth/check');
+      // Add timestamp and cache-busting
+      const timestamp = Date.now();
+      
+      // Direct fetch to handle any network errors specifically
+      const response = await fetch(`/api/auth/check?_t=${timestamp}`, {
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        }
+      });
+      
+      // Parse result or handle error
+      let result: AuthCheckResult;
+      
+      try {
+        result = await response.json();
+      } catch (parseError) {
+        console.error('API: Error parsing auth check response:', parseError);
+        return {
+          status: 'error',
+          error: 'Failed to parse auth check response',
+          statusCode: response.status
+        };
+      }
+      
       console.log('API: Auth check completed:', result.status);
       
       // Show useful diagnostic info
       if (result.status !== 'authenticated') {
         console.log('API: Auth diagnostics:', JSON.stringify(result.diagnostics, null, 2));
+      }
+      
+      // If we have a valid user, store auth type
+      if (result.status === 'authenticated' && result.user && typeof localStorage !== 'undefined') {
+        localStorage.setItem('authType', result.user.type);
+        console.log('API: Stored auth type in localStorage:', result.user.type);
       }
       
       return result;
@@ -513,20 +693,18 @@ export const documentAPI = {
         formData.append('description', documentData.description);
       }
       
-      if (documentData.tags) {
-        formData.append('tags', JSON.stringify(documentData.tags));
+      if (documentData.tags && documentData.tags.length > 0) {
+        formData.append('tags', documentData.tags.join(','));
       }
       
-      if (documentData.sharedWith) {
-        formData.append('sharedWith', JSON.stringify(documentData.sharedWith));
+      if (documentData.sharedWith && documentData.sharedWith.length > 0) {
+        formData.append('sharedWith', documentData.sharedWith.join(','));
       }
       
       return fetchAPI('/documents', {
         method: 'POST',
         body: formData,
-        headers: {
-          // Remove Content-Type to let the browser set it with the boundary parameter
-        },
+        // Do not set any Content-Type header, let browser set it automatically
       });
     } else {
       // For data URLs or other string representations
@@ -571,25 +749,43 @@ export const documentAPI = {
 export const messagesAPI = {
   // Get all messages with optional pagination
   async getAll(limit: number = 50, page: number = 1): Promise<Message[]> {
-    const response = await fetchAPI<{messages: Message[]}>(`/messages?limit=${limit}&page=${page}`);
-    return response.messages || [];
+    try {
+      const response = await fetchAPI<{messages: Message[]}>(`/messages?limit=${limit}&page=${page}`);
+      return response.messages || [];
+    } catch (error) {
+      console.error('API: Error fetching messages');
+      // Return empty array to prevent breaking the UI
+      return [];
+    }
   },
   
   // Get messages after a specific timestamp
   async getAfter(timestamp: string): Promise<Message[]> {
-    const response = await fetchAPI<{messages: Message[]}>(`/messages?after=${encodeURIComponent(timestamp)}`);
-    return response.messages || [];
+    try {
+      const response = await fetchAPI<{messages: Message[]}>(`/messages?after=${encodeURIComponent(timestamp)}`);
+      return response.messages || [];
+    } catch (error) {
+      console.error('API: Error fetching messages after timestamp');
+      // Return empty array to prevent breaking the UI
+      return [];
+    }
   },
   
   // Send a new message
   async send(content: string): Promise<Message> {
-    return fetchAPI<Message>('/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ content }),
-    });
+    try {
+      const result = await fetchAPI<Message>('/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+      });
+      return result;
+    } catch (error) {
+      console.error('API: Error sending message');
+      throw error; // Re-throw to allow the component to handle the error
+    }
   },
   
   // Delete a message (admin or owner only)
@@ -600,10 +796,70 @@ export const messagesAPI = {
       });
       return true;
     } catch (error) {
-      console.error('Error deleting message:', error);
+      console.error('API: Error deleting message');
       return false;
     }
   }
+};
+
+// Notifications API functions
+export const notificationsAPI = {
+  // Get all notifications with optional filtering
+  async getAll(options: { limit?: number; page?: number; unreadOnly?: boolean } = {}): Promise<any> {
+    try {
+      const { limit = 50, page = 1, unreadOnly = false } = options;
+      let url = `/notifications?limit=${limit}&page=${page}`;
+      
+      if (unreadOnly) {
+        url += '&unreadOnly=true';
+      }
+      
+      const response = await fetchAPI(url);
+      return response;
+    } catch (error) {
+      console.error('API: Error fetching notifications');
+      // Return empty data to prevent breaking the UI
+      return { notifications: [], pagination: { total: 0, page: 1, limit: 50, totalPages: 0 } };
+    }
+  },
+  
+  // Mark a notification as read
+  async markAsRead(id: string): Promise<any> {
+    try {
+      return await fetchAPI(`/notifications/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ read: true }),
+      });
+    } catch (error) {
+      console.error('API: Error marking notification as read');
+      throw error;
+    }
+  },
+  
+  // Mark all notifications as read
+  async markAllAsRead(): Promise<any> {
+    try {
+      return await fetchAPI('/notifications/mark-all-read', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('API: Error marking all notifications as read');
+      throw error;
+    }
+  },
+  
+  // Delete a notification
+  async delete(id: string): Promise<boolean> {
+    try {
+      await fetchAPI(`/notifications/${id}`, {
+        method: 'DELETE',
+      });
+      return true;
+    } catch (error) {
+      console.error('API: Error deleting notification');
+      return false;
+    }
+  },
 };
 
 // Export all API services
@@ -614,6 +870,7 @@ export const API = {
   projects: projectAPI,
   documents: documentAPI,
   messages: messagesAPI,
+  notifications: notificationsAPI,
 };
 
 export default API; 
