@@ -123,6 +123,19 @@ model Message {
   sender     User?     @relation(fields: [senderId], references: [id])
 }
 
+model MessageArchive {
+  id         String   @id @default(uuid())
+  content    String
+  senderId   String?
+  employeeId String?  
+  senderName String?
+  senderAvatar String?
+  timestamp  DateTime
+  archiveMonth String  // Format: YYYY-MM
+  isEmployee Boolean @default(false)
+  createdAt  DateTime @default(now())
+}
+
 model Notification {
   id        String   @id @default(uuid())
   title     String

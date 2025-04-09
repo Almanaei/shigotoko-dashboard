@@ -5,6 +5,15 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { API } from '@/lib/api';
+import { useDashboard } from '@/lib/DashboardProvider';
+
+interface CountsData {
+  employees: number;
+  departments: number;
+  projects: number;
+  messages: number;
+  documents: number;
+}
 
 interface NavItem {
   name: string;
@@ -20,7 +29,101 @@ interface SidebarProps {
 export default function Sidebar({ collapsed }: SidebarProps = {}) {
   const [isCollapsed, setIsCollapsed] = useState(collapsed || false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [counts, setCounts] = useState<CountsData>({
+    employees: 0,
+    departments: 0,
+    projects: 0,
+    messages: 0,
+    documents: 0
+  });
+  const [isLoading, setIsLoading] = useState(true);
   const pathname = usePathname();
+  const { state } = useDashboard();
+  
+  // Fetch real counts from the database
+  useEffect(() => {
+    async function fetchCounts() {
+      try {
+        setIsLoading(true);
+        // First, use data from the dashboard state if available
+        if (state.employees.length > 0 || state.departments.length > 0 || state.projects.length > 0) {
+          setCounts({
+            employees: state.employees.length,
+            departments: state.departments.length,
+            projects: state.projects.length,
+            messages: state.messages.length,
+            documents: state.documents.length
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // If dashboard state isn't populated yet, fetch directly from the API
+        const response = await fetch('/api/check/db');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.database && data.database.counts) {
+            const { counts: dbCounts } = data.database;
+            setCounts({
+              employees: dbCounts.employees || 0,
+              departments: dbCounts.departments || 0,
+              projects: dbCounts.projects || 0,
+              messages: await fetchMessageCount() || 0,
+              documents: await fetchDocumentCount() || 0
+            });
+          }
+        } else {
+          console.error('Error fetching counts from database');
+          // Fallback to dashboard state counts
+          setCounts({
+            employees: state.employees.length,
+            departments: state.departments.length,
+            projects: state.projects.length,
+            messages: state.messages.length,
+            documents: state.documents.length
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching counts:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    // Fetch message count separately since it requires pagination details
+    async function fetchMessageCount(): Promise<number> {
+      try {
+        const response = await fetch('/api/messages?limit=1&page=1');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pagination && data.pagination.total) {
+            return data.pagination.total;
+          }
+        }
+        return state.messages.length;
+      } catch (error) {
+        console.error('Error fetching message count:', error);
+        return state.messages.length;
+      }
+    }
+
+    // Fetch document count separately
+    async function fetchDocumentCount(): Promise<number> {
+      try {
+        const response = await fetch('/api/documents');
+        if (response.ok) {
+          const data = await response.json();
+          return Array.isArray(data) ? data.length : 0;
+        }
+        return state.documents.length;
+      } catch (error) {
+        console.error('Error fetching document count:', error);
+        return state.documents.length;
+      }
+    }
+
+    fetchCounts();
+  }, [state.employees.length, state.departments.length, state.projects.length, state.messages.length, state.documents.length]);
   
   // Update internal state when prop changes
   useEffect(() => {
@@ -60,12 +163,12 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
   
   const navigation: NavItem[] = [
     { name: 'Dashboard', href: '/', icon: Home },
-    { name: 'Employees', href: '/employees', icon: Users, count: 12 },
-    { name: 'Departments', href: '/departments', icon: Building2, count: 5 },
-    { name: 'Projects', href: '/projects', icon: FolderKanban, count: 3 },
+    { name: 'Employees', href: '/employees', icon: Users, count: isLoading ? 0 : counts.employees },
+    { name: 'Departments', href: '/departments', icon: Building2, count: isLoading ? 0 : counts.departments },
+    { name: 'Projects', href: '/projects', icon: FolderKanban, count: isLoading ? 0 : counts.projects },
     { name: 'Schedule', href: '/schedule', icon: Calendar },
-    { name: 'Messages', href: '/messages', icon: MessageSquare, count: 5 },
-    { name: 'Documents', href: '/documents', icon: FileText },
+    { name: 'Messages', href: '/messages', icon: MessageSquare, count: isLoading ? 0 : counts.messages },
+    { name: 'Documents', href: '/documents', icon: FileText, count: isLoading ? 0 : counts.documents },
   ];
   
   const secondaryNavigation: NavItem[] = [
@@ -124,9 +227,13 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
               {!isCollapsed && (
                 <span className="flex-1">{item.name}</span>
               )}
-              {!isCollapsed && item.count && (
-                <span className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 ml-3 text-xs font-medium rounded-full">
-                  {item.count}
+              {!isCollapsed && item.count !== undefined && (
+                <span className={`
+                  bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 
+                  px-2 py-0.5 ml-3 text-xs font-medium rounded-full
+                  ${isLoading ? 'animate-pulse' : ''}
+                `}>
+                  {isLoading ? '0' : item.count}
                 </span>
               )}
             </Link>

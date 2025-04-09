@@ -2,10 +2,10 @@
 
 import { Bell, Search, Calendar, MessageCircle, Moon, Sun, LogOut } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { useDashboard, ACTIONS } from '@/lib/DashboardProvider';
-import { useTheme } from '@/lib/ThemeProvider';
+import { useDashboard } from '@/lib/DashboardProvider';
+import { useAuth } from '@/lib/AuthProvider';
 import { useRouter } from 'next/navigation';
-import { API } from '@/lib/api';
+import MemoizedAvatar from './MemoizedAvatar';
 
 // Add TypeScript interface for the extended Window object at the top of the file (after imports)
 declare global {
@@ -15,233 +15,70 @@ declare global {
 }
 
 export default function Navbar() {
-  const { state, dispatch } = useDashboard();
-  const { currentUser, notifications } = state;
+  const { state } = useDashboard();
+  const { notifications } = state;
+  const { state: authState, logout } = useAuth();
+  const { user } = authState;
+  
   const [mounted, setMounted] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const router = useRouter();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  
-  // Add state to track avatar refresh attempts
-  const [avatarRefreshAttempt, setAvatarRefreshAttempt] = useState(0);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const router = useRouter();
   
   // Debug logging
   useEffect(() => {
-    console.log('Current user in Navbar:', currentUser);
-    if (currentUser?.avatar) {
+    console.log('Current user in Navbar:', user);
+    if (user?.avatar) {
       console.log('Avatar type:', 
-        currentUser.avatar.startsWith('data:') ? 'data:URL' : 
-        currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'Other',
-        'Length:', currentUser.avatar.length
+        user.avatar.startsWith('data:') ? 'data:URL' : 
+        user.avatar.startsWith('http') ? 'HTTP URL' : 'Other',
+        'Length:', user.avatar.length
       );
     } else {
-      console.log('No avatar found in currentUser');
+      console.log('No avatar found in user');
     }
-  }, [currentUser]);
+  }, [user]);
   
-  // Add effect to fetch the latest user profile data including avatar
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        // Only fetch if we have a currentUser but need to refresh their data
-        if (currentUser && currentUser.id) {
-          console.log('Fetching latest user profile data for Navbar avatar refresh');
-          
-          // Get auth type from localStorage
-          const authType = localStorage.getItem('authType') || 'user';
-          
-          let profile;
-          if (authType === 'employee') {
-            // For employee type users
-            console.log('Navbar: Fetching employee profile data');
-            try {
-              const response = await fetch(`/api/employees/${currentUser.id}`, {
-                credentials: 'include',
-                headers: {
-                  'Cache-Control': 'no-cache',
-                  'Pragma': 'no-cache',
-                },
-              });
-              
-              if (response.ok) {
-                profile = await response.json();
-                console.log('Navbar: Got employee data from API:', profile ? {
-                  name: profile.name,
-                  id: profile.id,
-                  hasAvatar: !!profile.avatar,
-                  avatarType: profile.avatar ? (
-                    profile.avatar.startsWith('data:') ? 'data:URL' : 
-                    profile.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
-                  ) : 'None',
-                  avatarPreview: profile.avatar ? profile.avatar.substring(0, 50) + '...' : 'None'
-                } : 'No profile data');
-              } else {
-                console.log('Navbar: Failed to fetch employee data, status:', response.status);
-                setAvatarError(`Employee fetch failed: ${response.status}`);
-              }
-            } catch (error) {
-              console.error('Navbar: Error fetching employee profile:', error);
-              setAvatarError('Employee API error');
-            }
-          } else {
-            // For regular user type
-            console.log('Navbar: Fetching user profile data');
-            try {
-              profile = await API.auth.getProfile();
-              console.log('Navbar: Got user data from API:', profile ? {
-                name: profile.name,
-                id: profile.id,
-                hasAvatar: !!profile.avatar,
-                avatarType: profile.avatar ? (
-                  profile.avatar.startsWith('data:') ? 'data:URL' : 
-                  profile.avatar.startsWith('http') ? 'HTTP URL' : 'Other'
-                ) : 'None',
-                avatarPreview: profile.avatar ? profile.avatar.substring(0, 50) + '...' : 'None'
-              } : 'No profile data');
-            } catch (error) {
-              console.error('Navbar: Error fetching user profile:', error);
-              setAvatarError('User API error');
-            }
-          }
-          
-          // If we got updated profile data, update the current user in the dashboard state
-          if (profile) {
-            // Try to restore avatar from localStorage if missing in the API response
-            if (!profile.avatar) {
-              const storedAvatar = localStorage.getItem('userAvatar');
-              if (storedAvatar) {
-                console.log('Navbar: Restoring avatar from localStorage');
-                profile.avatar = storedAvatar;
-              }
-            }
-            
-            // Validate avatar before updating state
-            if (profile.avatar) {
-              // Check if it's a valid image format
-              const isValidAvatar = Boolean(
-                profile.avatar && 
-                typeof profile.avatar === 'string' &&
-                (
-                  profile.avatar.startsWith('data:image/') || 
-                  profile.avatar.startsWith('http') ||
-                  profile.avatar.startsWith('/')
-                )
-              );
-                
-              if (!isValidAvatar) {
-                console.log('Navbar: Received invalid avatar format, removing it:', 
-                  profile.avatar.substring(0, 20) + '...');
-                profile.avatar = '';
-              }
-            }
-            
-            dispatch({
-              type: ACTIONS.SET_CURRENT_USER,
-              payload: profile
-            });
-            
-            // Clear any previous avatar error
-            setAvatarError(null);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching user profile for avatar:', error);
-        setAvatarError('Profile fetch error');
-      }
-    };
-    
-    fetchUserProfile();
-    
-    // Add listener for avatar updates from other components
-    const handleAvatarUpdate = () => {
-      console.log('Navbar: Detected avatar update event, refreshing profile');
-      setAvatarRefreshAttempt(prev => prev + 1);
-    };
-    
-    window.addEventListener('avatarUpdated', handleAvatarUpdate);
-    
-    return () => {
-      window.removeEventListener('avatarUpdated', handleAvatarUpdate);
-    };
-  }, [currentUser?.id, dispatch, avatarRefreshAttempt]);
-  
-  // Safely try to use ThemeProvider
-  let themeContext;
-  try {
-    themeContext = useTheme();
-  } catch (error) {
-    // Fallback to local state if ThemeProvider is not available
-    themeContext = {
-      theme: isDarkMode ? 'dark' : 'light',
-      toggleTheme: () => {
-        const newMode = !isDarkMode;
-        setIsDarkMode(newMode);
-        if (typeof window !== 'undefined') {
-          const root = window.document.documentElement;
-          root.classList.remove('light', 'dark');
-          root.classList.add(newMode ? 'dark' : 'light');
-          localStorage.setItem('theme', newMode ? 'dark' : 'light');
-        }
-      }
-    };
-  }
-  
-  const { theme, toggleTheme } = themeContext;
-  
-  // Handle mounted state to prevent hydration mismatch
+  // Use local theme state instead of ThemeProvider
+  // This avoids errors with context availability
+  const [localTheme, setLocalTheme] = useState<'light' | 'dark'>('light');
+
+  // Initialize theme from localStorage or system preference
   useEffect(() => {
     setMounted(true);
-    // Initialize dark mode from localStorage if ThemeProvider failed
-    if (typeof window !== 'undefined' && !themeContext) {
+    
+    if (typeof window !== 'undefined') {
+      // Get theme from localStorage or system preference
       const savedTheme = localStorage.getItem('theme');
-      const initialDarkMode = savedTheme === 'dark';
-      setIsDarkMode(initialDarkMode);
-    }
-    
-    // Check if we previously had an avatar loading failure
-    if (typeof localStorage !== 'undefined') {
-      const avatarFailed = localStorage.getItem('avatarFailedToLoad');
-      if (avatarFailed === 'true') {
-        console.log('Navbar: Previously failed to load avatar, scheduling a refresh');
-        // Clear the flag
-        localStorage.removeItem('avatarFailedToLoad');
-        // Schedule a refresh after a short delay
-        setTimeout(() => {
-          setAvatarRefreshAttempt(prev => prev + 1);
-        }, 2000);
-      }
-    }
-    
-    // Check for auth_type cookie on component mount
-    // This helps with determining which authentication method was used
-    if (typeof document !== 'undefined') {
-      const cookies = document.cookie.split(';');
-      const authTypeCookie = cookies.find(c => c.trim().startsWith('auth_type='));
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       
-      if (authTypeCookie) {
-        const authType = authTypeCookie.split('=')[1];
-        console.log('Navbar: Detected auth_type cookie:', authType);
-        localStorage.setItem('authType', authType);
-      } else {
-        // Try to detect by session cookie presence
-        const hasEmployeeSession = cookies.some(c => c.trim().startsWith('employee-session='));
-        const hasUserSession = cookies.some(c => c.trim().startsWith('session-token=') || c.trim().startsWith('session_token='));
-        
-        if (hasEmployeeSession) {
-          console.log('Navbar: Detected employee session, setting authType');
-          localStorage.setItem('authType', 'employee');
-        } else if (hasUserSession) {
-          console.log('Navbar: Detected user session, setting authType');
-          localStorage.setItem('authType', 'user');
-        }
-      }
+      // Use dark if explicitly set in localStorage or system prefers it and no localStorage preference
+      const initialTheme = savedTheme === 'dark' || (!savedTheme && systemPrefersDark) ? 'dark' : 'light';
+      
+      setLocalTheme(initialTheme);
+      setIsDarkMode(initialTheme === 'dark');
+      
+      // Apply theme to document
+      const root = window.document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add(initialTheme);
     }
   }, []);
   
-  // Make sure we have a theme value
-  const effectiveTheme = mounted ? theme : 'light';
+  // Toggle theme function
+  const toggleLocalTheme = () => {
+    const newTheme = localTheme === 'light' ? 'dark' : 'light';
+    setLocalTheme(newTheme);
+    setIsDarkMode(newTheme === 'dark');
+    
+    if (typeof window !== 'undefined') {
+      const root = window.document.documentElement;
+      root.classList.remove('light', 'dark');
+      root.classList.add(newTheme);
+      localStorage.setItem('theme', newTheme);
+    }
+  };
   
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
@@ -251,162 +88,23 @@ export default function Navbar() {
     setIsLoggingOut(true);
     
     try {
-      // Use the API to properly logout - this will handle the server-side session deletion
-      console.log('Logging out via API...');
+      // Use the AuthProvider logout function
+      await logout();
       
-      // Try both User and Employee logout endpoints
-      try {
-        await API.auth.logout();
-        console.log('User logout successful');
-      } catch (userLogoutError) {
-        console.log('User logout failed:', userLogoutError);
-      }
-      
-      // Try Employee logout endpoint
-      try {
-        const response = await fetch('/api/auth/employee', {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (response.ok) {
-          console.log('Employee logout successful');
-        } else {
-          console.log('Employee logout failed with status:', response.status);
-        }
-      } catch (employeeLogoutError) {
-        console.log('Employee logout failed:', employeeLogoutError);
-      }
-      
-      // Additionally clear cookies on the client side
-      console.log('Clearing cookies...');
-      // Handle both cookie formats (with hyphen and underscore)
-      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      
-      // Clear any local storage items
-      localStorage.removeItem('justLoggedIn');
-      
-      console.log('Redirecting to login page...');
-      // Force a complete page refresh when redirecting
-      window.location.replace('/login');
+      // Redirect to login page
+      router.replace('/login');
     } catch (error) {
       console.error('Error during logout:', error);
       
-      // If API call fails, still attempt to clear cookies and redirect
-      document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-      window.location.replace('/login');
+      // If API call fails, still attempt to redirect
+      router.replace('/login');
+    } finally {
+      setIsLoggingOut(false);
     }
-  };
-
-  // User avatar renderer function
-  const renderUserAvatar = () => {
-    if (!currentUser) return null;
-
-    // Create fallback avatar with initials
-    const renderInitials = () => {
-      // Safely get initials, even if name is undefined
-      const safelyGetInitials = () => {
-        const name = currentUser?.name || 'User';
-        if (!name || typeof name !== 'string') return 'U';
-        
-        try {
-          return name
-            .split(' ')
-            .map(part => part.charAt(0))
-            .slice(0, 2)
-            .join('')
-            .toUpperCase() || 'U';
-        } catch (err) {
-          return 'U'; // Default if anything goes wrong
-        }
-      };
-      
-      return (
-        <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium">
-          {safelyGetInitials()}
-        </div>
-      );
-    };
-    
-    // Check if avatar is valid before trying to render it
-    const isValidAvatar = Boolean(
-      currentUser?.avatar && 
-      typeof currentUser.avatar === 'string' &&
-      (
-        currentUser.avatar.startsWith('data:image/') || 
-        currentUser.avatar.startsWith('http') ||
-        currentUser.avatar.startsWith('/')
-      )
-    );
-    
-    // If we don't have a valid avatar, just render the initials
-    if (!isValidAvatar) {
-      return renderInitials();
-    }
-    
-    // If we have a valid avatar, render it with a fallback
-    return (
-      <div className="relative h-8 w-8">
-        {/* Wrap in an error boundary to prevent crashes */}
-        <div className="relative h-8 w-8">
-          <img
-            className="h-8 w-8 rounded-full object-cover border border-gray-200 dark:border-gray-700"
-            src={currentUser.avatar || ''}
-            alt={currentUser.name || 'User'}
-            onError={(e) => {
-              try {
-                // Hide the broken image
-                if (e.currentTarget) {
-                  e.currentTarget.style.display = 'none';
-                }
-                
-                // Call the global handler if available, bypassing Next.js error interception
-                if (window.__handleAvatarError) {
-                  window.__handleAvatarError();
-                }
-              } catch (err) {
-                // Silent fail
-              }
-            }}
-          />
-        </div>
-        <div 
-          id="avatar-fallback"
-          className="hidden absolute inset-0 h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-medium"
-        >
-          {(() => {
-            const name = currentUser?.name || 'User';
-            if (!name || typeof name !== 'string') return 'U';
-            
-            try {
-              return name
-                .split(' ')
-                .map(part => part.charAt(0))
-                .slice(0, 2)
-                .join('')
-                .toUpperCase() || 'U';
-            } catch (err) {
-              return 'U'; // Default if anything goes wrong
-            }
-          })()}
-        </div>
-        
-        {/* Display avatar error if any, shown only in development */}
-        {process.env.NODE_ENV === 'development' && avatarError && (
-          <div className="absolute top-full mt-1 right-0 text-xs bg-red-100 text-red-600 p-1 rounded whitespace-nowrap">
-            Avatar error: {avatarError}
-          </div>
-        )}
-      </div>
-    );
   };
 
   // Inside the user menu dropdown, add a role update option if current user has Admin capability
-  const userMenuItems = currentUser ? (
+  const userMenuItems = user ? (
     <div className="py-1">
       <a
         href="/profile"
@@ -422,7 +120,7 @@ export default function Navbar() {
       </a>
       
       {/* Add admin options if user is Admin */}
-      {currentUser.role === 'Admin' && (
+      {user.role === 'Admin' && (
         <>
           <hr className="my-1 border-gray-200 dark:border-gray-600" />
           <div className="block px-4 py-1 text-xs text-gray-500 dark:text-gray-400">
@@ -430,39 +128,13 @@ export default function Navbar() {
           </div>
           
           <button
-            onClick={async () => {
-              try {
-                // Find the user "Almanaei" in employees
-                const almanaeiUser = await API.auth.getCurrentUser();
-                
-                // Only update if we found the user and they're not already Admin
-                if (almanaeiUser && almanaeiUser.role !== 'Admin') {
-                  console.log('Updating Almanaei role to Admin');
-                  const updatedUser = await API.auth.updateUser(almanaeiUser.id, 'Admin');
-                  
-                  if (updatedUser) {
-                    // Update the current user in the dashboard state
-                    dispatch({
-                      type: ACTIONS.SET_CURRENT_USER,
-                      payload: updatedUser
-                    });
-                    
-                    // Show success notification
-                    alert('Role updated to Admin successfully!');
-                  }
-                } else {
-                  alert(almanaeiUser?.role === 'Admin' 
-                    ? 'User already has Admin role!' 
-                    : 'User not found!');
-                }
-              } catch (error) {
-                console.error('Error updating role:', error);
-                alert('Failed to update role. See console for details.');
-              }
+            onClick={() => {
+              // Admin actions would use the new API service
+              alert('Admin actions now use the new API service');
             }}
             className="w-full text-left px-4 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            Make Admin
+            Admin Actions
           </button>
         </>
       )}
@@ -477,159 +149,8 @@ export default function Navbar() {
     </div>
   ) : null;
 
-  // Add more aggressive avatar recovery effect
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    // Check for last avatar update timestamp
-    const lastUpdate = localStorage.getItem('lastAvatarUpdate');
-    const now = Date.now();
-    
-    // If we have a current user without avatar or with an outdated one
-    if (currentUser && (!currentUser.avatar || (lastUpdate && parseInt(lastUpdate) > now - 60000))) {
-      // First try the temp preview (for immediate feedback while saving)
-      const tempPreview = localStorage.getItem('tempAvatarPreview');
-      if (tempPreview) {
-        console.log('Navbar: Found temporary avatar preview, applying it');
-        dispatch({
-          type: ACTIONS.SET_CURRENT_USER,
-          payload: {
-            ...currentUser,
-            avatar: tempPreview
-          }
-        });
-        return;
-      }
-      
-      // Then try the stored avatar
-      const storedAvatar = localStorage.getItem('userAvatar');
-      if (storedAvatar) {
-        console.log('Navbar: Found stored avatar in localStorage, applying it');
-        dispatch({
-          type: ACTIONS.SET_CURRENT_USER,
-          payload: {
-            ...currentUser,
-            avatar: storedAvatar
-          }
-        });
-      }
-    }
-  }, [currentUser, dispatch]);
-
-  // Add event listener to detect avatar updates from other tabs or components
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (!currentUser) return;
-      
-      // If avatar related storage changes, refresh the current user
-      if (e.key === 'userAvatar' || e.key === 'tempAvatarPreview' || e.key === 'lastAvatarUpdate') {
-        console.log('Navbar: Detected avatar update in localStorage');
-        
-        // Get the latest avatar
-        const avatar = localStorage.getItem('userAvatar') || 
-                       localStorage.getItem('tempAvatarPreview') || 
-                       currentUser.avatar;
-        
-        if (avatar && avatar !== currentUser.avatar) {
-          console.log('Navbar: Updating avatar from localStorage change');
-          dispatch({
-            type: ACTIONS.SET_CURRENT_USER,
-            payload: {
-              ...currentUser,
-              avatar
-            }
-          });
-        }
-      }
-    };
-    
-    window.addEventListener('storage', handleStorage);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, [currentUser, dispatch]);
-
-  // Handle avatarUpdated event with special force refresh
-  useEffect(() => {
-    const forceRefreshAvatar = () => {
-      if (!currentUser) return;
-      
-      // Immediately try to fetch current user profile
-      console.log('Navbar: Force refreshing avatar after update event');
-      
-      // First try localStorage (fastest)
-      const storedAvatar = localStorage.getItem('userAvatar') || 
-                           localStorage.getItem('tempAvatarPreview');
-      
-      if (storedAvatar && storedAvatar !== currentUser.avatar) {
-        console.log('Navbar: Using stored avatar from localStorage');
-        dispatch({
-          type: ACTIONS.SET_CURRENT_USER,
-          payload: {
-            ...currentUser,
-            avatar: storedAvatar
-          }
-        });
-      } else {
-        // If no localStorage avatar, force a refresh attempt
-        setAvatarRefreshAttempt(prev => prev + 1);
-      }
-    };
-    
-    window.addEventListener('avatarUpdated', forceRefreshAvatar);
-    
-    return () => {
-      window.removeEventListener('avatarUpdated', forceRefreshAvatar);
-    };
-  }, [currentUser, dispatch]);
-
-  // Add event listener to safely track avatar failures without triggering Next.js error systems
-  useEffect(() => {
-    // Define a global handler for avatar loading errors
-    const handleAvatarError = () => {
-      try {
-        // Get DOM element for fallback
-        const fallback = document.getElementById('avatar-fallback');
-        if (fallback) {
-          fallback.classList.remove('hidden');
-        }
-        
-        // Store information in localStorage for recovery
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem('avatarFailedToLoad', 'true');
-        }
-        
-        // Log information without triggering error systems
-        if (currentUser?.avatar) {
-          const avatarInfo = {
-            type: currentUser.avatar.startsWith('data:') ? 'data:URL' : 
-                  currentUser.avatar.startsWith('http') ? 'HTTP URL' : 'other',
-            length: currentUser.avatar.length,
-            preview: currentUser.avatar.substring(0, 20) + '...'
-          };
-          console.log('[Avatar] Failed to load:', avatarInfo);
-        } else {
-          console.log('[Avatar] Failed to load: no avatar available');
-        }
-        
-        // Schedule a refresh attempt
-        setTimeout(() => {
-          setAvatarRefreshAttempt(prev => prev + 1);
-        }, 2000);
-      } catch (err) {
-        // Use silent fail approach
-      }
-    };
-    
-    // Add event listener to the global window
-    window.__handleAvatarError = handleAvatarError;
-    
-    return () => {
-      // Clean up
-      delete window.__handleAvatarError;
-    };
-  }, [currentUser, setAvatarRefreshAttempt]);
+  // Use local theme for UI
+  const effectiveTheme = mounted ? localTheme : 'light';
 
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 h-16 px-4 flex items-center justify-between">
@@ -651,10 +172,10 @@ export default function Navbar() {
       
       <div className="flex items-center gap-4">
         {/* Display username prominently */}
-        {currentUser && (
+        {user && (
           <div className="hidden md:flex items-center px-3 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-100 dark:border-blue-800">
             <span className="font-medium text-blue-700 dark:text-blue-300">
-              {currentUser.name}
+              {user.name}
             </span>
           </div>
         )}
@@ -662,7 +183,7 @@ export default function Navbar() {
         {mounted && (
           <button 
             className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-            onClick={toggleTheme}
+            onClick={toggleLocalTheme}
             aria-label="Toggle theme"
           >
             {effectiveTheme === 'dark' ? (
@@ -719,18 +240,18 @@ export default function Navbar() {
         </button>
         
         {/* Mobile user info - shows only on small screens */}
-        {currentUser && (
+        {user && (
           <div className="md:hidden flex items-center gap-2">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{currentUser.name}</div>
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{user.name}</div>
           </div>
         )}
         
         {/* User dropdown */}
         <div className="relative ml-3 flex items-center">
           {/* Display role next to avatar */}
-          {currentUser && (
+          {user && (
             <div className="hidden md:block mr-2">
-              <div className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{user.role}</div>
             </div>
           )}
           <div>
@@ -742,7 +263,7 @@ export default function Navbar() {
               aria-haspopup="true"
             >
               <span className="sr-only">Open user menu</span>
-              {renderUserAvatar()}
+              <MemoizedAvatar user={user} size="sm" />
             </button>
           </div>
 

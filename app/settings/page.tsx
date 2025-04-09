@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Layout from '@/components/dashboard/Layout';
-import { useDashboard } from '@/lib/DashboardProvider';
-import { ACTIONS } from '@/lib/DashboardProvider';
+import { useDashboard, ACTIONS } from '@/lib/DashboardProvider';
+import { useUser } from '@/lib/DashboardProvider';
+import { updateUserAvatar } from '@/lib/DashboardProvider';
 import { API } from '@/lib/api';
 import { 
   User, 
@@ -41,46 +42,92 @@ interface ExtendedUser {
 }
 
 export default function SettingsPage() {
-  const { state, dispatch } = useDashboard();
+  const { state, dispatch: dashboardDispatch } = useDashboard();
   const { currentUser } = state;
   
-  // Loading state
-  const [isLoading, setIsLoading] = useState(true);
-  
-  // Profile form state
-  const [profileForm, setProfileForm] = useState({
-    name: '',
-    email: '',
-    role: '',
-    avatar: '',
+  // Create a local reducer to manage component state
+  const [localState, localDispatch] = React.useReducer((state, action: {
+    type: string;
+    payload?: any;
+  }) => {
+    switch (action.type) {
+      case 'SET_LOADING':
+        return { ...state, isLoading: action.payload };
+      case 'SET_ERROR':
+        return { ...state, error: action.payload };
+      case 'SET_PROFILE_FORM':
+        return { ...state, profileForm: action.payload };
+      case 'UPDATE_PROFILE_FORM':
+        return { 
+          ...state, 
+          profileForm: { ...state.profileForm, ...action.payload } 
+        };
+      case 'SET_SUCCESS_MESSAGE':
+        return { 
+          ...state, 
+          showSuccess: true, 
+          successMessage: action.payload 
+        };
+      case 'HIDE_SUCCESS':
+        return { ...state, showSuccess: false };
+      case 'TOGGLE_DARK_MODE':
+        return { ...state, darkMode: !state.darkMode };
+      case 'TOGGLE_NOTIFICATION': {
+        // Use type assertion to ensure type safety
+        const setting = action.payload as keyof typeof state.notificationSettings;
+        return { 
+          ...state, 
+          notificationSettings: {
+            ...state.notificationSettings,
+            [setting]: !state.notificationSettings[setting]
+          }
+        };
+      }
+      default:
+        return state;
+    }
+  }, {
+    isLoading: true,
+    error: '',
+    profileForm: {
+      name: '',
+      email: '',
+      role: '',
+      avatar: '',
+    },
+    darkMode: typeof window !== 'undefined' ? 
+      document.documentElement.classList.contains('dark') : false,
+    notificationSettings: {
+      emailNotifications: true,
+      pushNotifications: true,
+      weeklyDigest: true,
+      mentionAlerts: true,
+      taskReminders: true,
+    },
+    showSuccess: false,
+    successMessage: '',
   });
+  
+  // Extract state variables for easier access
+  const { 
+    isLoading, 
+    error, 
+    profileForm, 
+    darkMode, 
+    notificationSettings,
+    showSuccess,
+    successMessage
+  } = localState;
   
   // File input reference
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Appearance settings state
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return document.documentElement.classList.contains('dark');
-    }
-    return false;
-  });
+  // Use a ref to track initialization
+  const initialized = useRef(false);
+  const profileFormSignature = useRef('');
   
-  // Notification settings state
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNotifications: true,
-    pushNotifications: true,
-    weeklyDigest: true,
-    mentionAlerts: true,
-    taskReminders: true
-  });
-  
-  // Success message state
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
-  
-  // Error state
-  const [error, setError] = useState('');
+  // Add a ref to track if we've already initialized the form
+  const initializedRef = useRef(false);
   
   // Function to refresh authentication sessions
   const refreshAuthSession = async () => {
@@ -234,7 +281,7 @@ export default function SettingsPage() {
     }, 3 * 60 * 1000); // 3 minutes
     
     return () => clearInterval(refreshInterval);
-  }, []);
+  }, []); // Empty dependency array since this should only run once on mount
   
   // Fetch current user data when component loads
   useEffect(() => {
@@ -251,8 +298,32 @@ export default function SettingsPage() {
       // Don't proceed if component unmounted during async operation
       if (!isMounted.current) return;
       
-      setIsLoading(true);
-      setError('');
+      // If we already have user data and an ID, don't fetch again
+      if (currentUser?.id && !isLoading) {
+        console.log('Settings page: Using existing currentUser data:', currentUser.name);
+        
+        // Only update form if not already initialized to prevent infinite loops
+        if (!initializedRef.current) {
+          console.log('Settings page: Initializing form with currentUser data');
+          localDispatch({
+            type: 'SET_PROFILE_FORM',
+            payload: {
+              name: currentUser.name,
+              email: currentUser.email,
+              role: currentUser.role || 'employee',
+              avatar: currentUser.avatar || '',
+            }
+          });
+          
+          initializedRef.current = true;
+        }
+        
+        localDispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
+      
+      localDispatch({ type: 'SET_LOADING', payload: true });
+      localDispatch({ type: 'SET_ERROR', payload: '' });
       
       try {
         // Check which authentication cookie exists
@@ -287,16 +358,47 @@ export default function SettingsPage() {
         
         let userData = null;
         
-        // If we already have currentUser data in the dashboard state, use that to avoid a reload loop
-        if (currentUser && currentUser.id) {
-          console.log('Settings page: Using existing currentUser data');
-          userData = currentUser;
-        } 
-        // Otherwise try authentication methods
-        else {
+        // Try the more reliable auth/check endpoint first
+        console.log('Settings page: Trying auth/check endpoint first...');
+        try {
+          const checkResponse = await fetch('/api/auth/check', {
+            credentials: 'include',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+            }
+          });
+          
+          // Bail if component unmounted during async operation
+          if (!isMounted.current) return;
+          
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            
+            if (checkData.status === 'authenticated' && checkData.user) {
+              userData = checkData.user;
+              
+              console.log('Settings page: Retrieved user data from auth/check:', 
+                userData.type, userData.name);
+              
+              // Store auth type for future use
+              localStorage.setItem('authType', userData.type);
+            } else {
+              console.log('Settings page: Auth check returned non-authenticated status:', 
+                checkData.status);
+            }
+          } else {
+            console.log('Settings page: Auth check failed with status:', checkResponse.status);
+          }
+        } catch (checkError) {
+          console.error('Settings page: Error with auth/check endpoint:', checkError);
+        }
+        
+        // If auth/check failed, fall back to specific auth method endpoints
+        if (!userData) {
           // Try standard User authentication first (more likely to work based on your logs)
           if (hasUserCookie || effectiveAuthType === 'user') {
-            console.log('Settings page: Trying standard user auth first...');
+            console.log('Settings page: Trying standard user auth as fallback...');
             try {
               userData = await API.auth.getCurrentUser();
               
@@ -314,7 +416,7 @@ export default function SettingsPage() {
           
           // If User login failed, try Employee login
           if (!userData && (hasEmployeeCookie || effectiveAuthType === 'employee')) {
-            console.log('Settings page: Trying employee auth...');
+            console.log('Settings page: Trying employee auth as fallback...');
             
             try {
               const employeeResponse = await fetch('/api/auth/employee', {
@@ -322,7 +424,7 @@ export default function SettingsPage() {
                 headers: {
                   'Content-Type': 'application/json',
                 },
-                credentials: 'include', // Include cookies for authentication
+                credentials: 'include',
               });
               
               // Bail if component unmounted during async operation
@@ -343,54 +445,75 @@ export default function SettingsPage() {
           }
         }
         
+        // If we still don't have user data, try refreshing the session and trying again
+        if (!userData && isMounted.current) {
+          console.log('Settings page: No user data found, trying session refresh...');
+          await refreshAuthSession();
+          
+          // Only try one more time after refresh
+          try {
+            const refreshedCheckResponse = await fetch('/api/auth/check', {
+              credentials: 'include',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+              }
+            });
+            
+            if (refreshedCheckResponse.ok && isMounted.current) {
+              const checkData = await refreshedCheckResponse.json();
+              
+              if (checkData.status === 'authenticated' && checkData.user) {
+                userData = checkData.user;
+                console.log('Settings page: Retrieved user data after refresh:', userData);
+                localStorage.setItem('authType', userData.type);
+              }
+            }
+          } catch (finalCheckError) {
+            console.error('Settings page: Final auth check failed:', finalCheckError);
+          }
+        }
+        
         // Final check if component still mounted
         if (!isMounted.current) return;
         
         if (userData) {
           console.log('Settings page: Retrieved user/employee data:', userData);
           
-          // Only update Redux state if the user data has actually changed
-          if (!currentUser || currentUser.id !== userData.id) {
-            dispatch({
-              type: ACTIONS.SET_CURRENT_USER,
-              payload: userData
-            });
-          }
-          
-          // Update form with user data
-          setProfileForm(prev => {
-            // Only update if values actually changed
-            if (
-              prev.name === userData.name && 
-              prev.email === userData.email && 
-              prev.role === (userData.role || 'employee') &&
-              prev.avatar === (userData.avatar || '')
-            ) {
-              return prev; // No changes needed
-            }
-            
-            // Return updated form data
-            return {
-              name: userData.name,
-              email: userData.email,
-              role: userData.role || 'employee',
-              avatar: userData.avatar || '',
-            };
+          // Update Redux state
+          dashboardDispatch({
+            type: ACTIONS.SET_CURRENT_USER,
+            payload: userData
           });
+          
+          // Update form with user data if not already initialized
+          if (!initializedRef.current) {
+            console.log('Settings page: Initializing form with API user data');
+            localDispatch({
+              type: 'SET_PROFILE_FORM',
+              payload: {
+                name: userData.name,
+                email: userData.email,
+                role: userData.role || 'employee',
+                avatar: userData.avatar || '',
+              }
+            });
+            initializedRef.current = true;
+          }
         } else {
           console.log('Settings page: No user/employee data returned from API');
-          setError('Could not retrieve user data. Please try again.');
+          localDispatch({ type: 'SET_ERROR', payload: 'Could not retrieve user data. Please try again.' });
         }
       } catch (error) {
         // Bail if component unmounted during async operation
         if (!isMounted.current) return;
         
         console.error('Settings page: Error fetching user data:', error);
-        setError('Error loading profile. Please check your connection and try again.');
+        localDispatch({ type: 'SET_ERROR', payload: 'Error loading profile. Please check your connection and try again.' });
       } finally {
         // Only update loading state if component still mounted
         if (isMounted.current) {
-          setIsLoading(false);
+          localDispatch({ type: 'SET_LOADING', payload: false });
         }
       }
     };
@@ -402,13 +525,16 @@ export default function SettingsPage() {
     return () => {
       isMounted.current = false;
     };
-  }, [dispatch, currentUser?.id]); // Only re-run if dispatch or currentUser ID changes
+  }, []); // Empty dependency array to ensure this only runs once on mount
   
   // Add cross-tab heartbeat mechanism to keep sessions alive across tabs
   useEffect(() => {
     if (typeof window === 'undefined' || window.top !== window.self) {
       return; // Skip in server-side rendering or iframes
     }
+    
+    // Store last heartbeat timestamp
+    const lastHeartbeatRef = { current: Date.now().toString() };
     
     // Check last heartbeat time in localStorage
     const checkHeartbeat = () => {
@@ -421,21 +547,24 @@ export default function SettingsPage() {
           console.log('Settings page: Session heartbeat triggered');
           refreshAuthSession();
           localStorage.setItem('session_last_heartbeat', now.toString());
+          lastHeartbeatRef.current = now.toString();
         }
       } catch (error) {
         console.error('Settings page: Error in heartbeat check:', error);
       }
     };
     
-    // Set initial heartbeat
-    localStorage.setItem('session_last_heartbeat', Date.now().toString());
+    // Set initial heartbeat only once
+    if (!localStorage.getItem('session_last_heartbeat')) {
+      localStorage.setItem('session_last_heartbeat', Date.now().toString());
+    }
     
     // Check heartbeat every 30 seconds
     const heartbeatInterval = setInterval(checkHeartbeat, 30000);
     
     // Listen for storage events from other tabs
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'session_last_heartbeat') {
+      if (e.key === 'session_last_heartbeat' && e.newValue !== lastHeartbeatRef.current) {
         console.log('Settings page: Detected heartbeat from another tab');
       }
     };
@@ -446,17 +575,17 @@ export default function SettingsPage() {
       clearInterval(heartbeatInterval);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, []); // Empty dependency array
   
   // Handle profile form submission
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    localDispatch({ type: 'SET_ERROR', payload: '' });
     
     if (currentUser) {
       try {
         // Show loading state
-        setIsLoading(true);
+        localDispatch({ type: 'SET_LOADING', payload: true });
         
         console.log('Profile submit: Current avatar in form:', profileForm.avatar ? 
           (profileForm.avatar.substring(0, 30) + '... [' + Math.round(profileForm.avatar.length / 1024) + ' KB]') : 'None');
@@ -465,7 +594,7 @@ export default function SettingsPage() {
         const sessionValid = await refreshAuthSession();
         if (!sessionValid) {
           console.warn('Settings page: Session validation failed before profile update');
-          setError('Your session may have expired. Attempting to restore it...');
+          localDispatch({ type: 'SET_ERROR', payload: 'Your session may have expired. Attempting to restore it...' });
           
           // Try again more aggressively with a slight delay
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -575,25 +704,29 @@ export default function SettingsPage() {
             avatarPreview: profileUpdate.avatar ? profileUpdate.avatar.substring(0, 30) + '...' : 'None'
           });
           
+          // Make sure to include the avatar in the request to avoid it being cleared
+          const employeeData = {
+            name: profileUpdate.name,
+            email: profileUpdate.email,
+            // Explicitly include avatar, even if undefined - API handles this properly now
+            avatar: profileUpdate.avatar || currentUser.avatar,
+            // Keep other fields unchanged
+            position: (currentUser as ExtendedUser).position,
+            department: (currentUser as ExtendedUser).departmentId || (currentUser as ExtendedUser).department?.id,
+            address: (currentUser as ExtendedUser).address,
+            phoneNumber: (currentUser as ExtendedUser).phoneNumber,
+            hireDate: (currentUser as ExtendedUser).hireDate,
+            birthday: (currentUser as ExtendedUser).birthday,
+            salary: (currentUser as ExtendedUser).salary,
+          };
+          
           // Use Employee API endpoint directly
           const response = await fetch('/api/employees/' + currentUser.id, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              name: profileUpdate.name,
-              email: profileUpdate.email,
-              avatar: profileUpdate.avatar,
-              // Keep other fields unchanged
-              position: (currentUser as ExtendedUser).position,
-              department: (currentUser as ExtendedUser).departmentId || (currentUser as ExtendedUser).department?.id,
-              address: (currentUser as ExtendedUser).address,
-              phoneNumber: (currentUser as ExtendedUser).phoneNumber,
-              hireDate: (currentUser as ExtendedUser).hireDate,
-              birthday: (currentUser as ExtendedUser).birthday,
-              salary: (currentUser as ExtendedUser).salary,
-            }),
+            body: JSON.stringify(employeeData),
             credentials: 'include',
           });
           
@@ -620,7 +753,14 @@ export default function SettingsPage() {
             avatarPreview: profileUpdate.avatar ? profileUpdate.avatar.substring(0, 30) + '...' : 'None'
           });
           
-          updatedUser = await API.auth.updateProfile(profileUpdate);
+          // For user accounts, we need to make sure avatar is included (even if null)
+          const userData = {
+            ...profileUpdate,
+            // Only explicitly set avatar to null if avatar has been removed
+            avatar: 'avatar' in profileUpdate ? profileUpdate.avatar : currentUser.avatar
+          };
+          
+          updatedUser = await API.auth.updateProfile(userData);
           console.log('User API response:', {
             id: updatedUser.id,
             name: updatedUser.name,
@@ -632,17 +772,14 @@ export default function SettingsPage() {
         // Refresh the session again after the update to ensure we maintain authentication
         await refreshAuthSession();
         
-        // Update the current user in state
-        dispatch({
-          type: ACTIONS.SET_CURRENT_USER,
-          payload: updatedUser
-        });
-        
         // Store the avatar in localStorage as backup to ensure it persists
         if (updatedUser.avatar) {
           try {
             localStorage.setItem('userAvatar', updatedUser.avatar);
             console.log('Settings page: Stored avatar in localStorage for backup');
+            
+            // Also update last avatar timestamp to force UI refresh
+            localStorage.setItem('lastAvatarUpdate', Date.now().toString());
           } catch (storageError) {
             console.error('Settings page: Failed to store avatar in localStorage (may be too large):', storageError);
             
@@ -653,6 +790,12 @@ export default function SettingsPage() {
           localStorage.removeItem('userAvatar');
           localStorage.removeItem('hasUserAvatar');
         }
+        
+        // Update the current user in state
+        dashboardDispatch({
+          type: ACTIONS.SET_CURRENT_USER,
+          payload: updatedUser
+        });
         
         console.log('Settings page: Profile updated successfully:', {
           name: updatedUser.name,
@@ -670,148 +813,22 @@ export default function SettingsPage() {
         // Force a re-render of components that use the avatar
         window.dispatchEvent(new Event('avatarUpdated'));
         
-        // Implement a more forceful avatar update approach
-        // 1. Immediately update localStorage
-        try {
-          if (updatedUser.avatar) {
-            localStorage.setItem('lastAvatarUpdate', Date.now().toString());
-            try {
-              // Only try to store the full avatar if it's not too big
-              if (updatedUser.avatar.length < 1024 * 1024) { // 1MB limit
-                localStorage.setItem('userAvatar', updatedUser.avatar);
-              }
-            } catch (e) {
-              console.log('Avatar too large for localStorage');
-            }
-          }
-        } catch (e) {
-          console.error('Error updating avatar in localStorage:', e);
-        }
-        
-        // 2. Force a hard navigation to refresh the navbar completely if needed
-        if (profileForm.avatar !== updatedUser.avatar) {
-          // If avatar was changed but doesn't match what we got back, we need to force a refresh
-          const currentPath = window.location.pathname;
-          
-          // Slight delay to ensure the notification is seen
-          setTimeout(() => {
-            console.log('Avatar change detected, forcing page refresh');
-            // Use history.pushState to refresh the page without changing the URL
-            window.location.href = currentPath + '?t=' + Date.now();
-          }, 1500);
-        }
-      } catch (error: any) {
-        console.error('Settings page: Error updating profile:', error);
-        
-        // Provide more detailed error message
-        let errorMessage = 'Failed to update profile. Please try again.';
-        
-        if (error.message) {
-          errorMessage = error.message;
-        }
-        
-        // Check for specific error types
-        if (error.name === 'SyntaxError') {
-          errorMessage = 'Invalid response from server. The avatar may be too large.';
-        } else if (error.message?.includes('NetworkError')) {
-          errorMessage = 'Network error. Please check your connection and try again.';
-        } else if (error.message?.includes('timeout')) {
-          errorMessage = 'Request timed out. The avatar may be too large.';
-        } else if (error.message?.includes('expired') || error.message?.includes('Unauthorized') || error.message === 'Session expired') {
-          errorMessage = 'Your session has expired. Attempting emergency session recovery...';
-          
-          // Special handling for session expiration - this is a critical error that requires a specific approach
-          try {
-            // 1. First try our recovery endpoint
-            console.log('Settings page: Attempting emergency session recovery...');
-            const authType = localStorage.getItem('authType') || 'user';
-            
-            // 2. Attempt to perform a full session refresh with our improved function
-            const refreshSuccess = await refreshAuthSession();
-            
-            if (refreshSuccess) {
-              console.log('Settings page: Session successfully recovered via refreshAuthSession');
-              setError('Session recovered! Retrying profile update...');
-              
-              // Slight delay before retry
-              setTimeout(() => {
-                handleProfileSubmit(new Event('submit') as any);
-              }, 1000);
-              return;
-            }
-            
-            // 3. If that failed, try the explicit recovery endpoint
-            await fetch(`/api/auth/set-cookies?type=${authType}&action=recover`, {
-              credentials: 'include',
-            });
-            
-            console.log('Settings page: Attempted recovery via set-cookies');
-            
-            // 4. Check if the recovery worked
-            setTimeout(async () => {
-              try {
-                // Try making a basic auth check to see if the recovery worked
-                const checkResponse = await fetch('/api/auth/check', {
-                  credentials: 'include',
-                });
-                
-                if (checkResponse.ok) {
-                  const data = await checkResponse.json();
-                  if (data.status === 'authenticated') {
-                    // Recovery successful! Try resubmitting the form
-                    console.log('Settings page: Session recovery successful, retrying profile update');
-                    setError('Session recovered successfully! Retrying profile update...');
-                    
-                    // Update localStorage with correct auth type based on recovered session
-                    if (data.diagnostics?.sessionCheck?.type) {
-                      localStorage.setItem('authType', data.diagnostics.sessionCheck.type);
-                    }
-                    
-                    // Slight delay before retry
-                    setTimeout(() => {
-                      handleProfileSubmit(new Event('submit') as any);
-                    }, 1000);
-                    return;
-                  }
-                }
-                
-                // If we get here, recovery failed
-                console.log('Settings page: Session recovery failed, redirecting to login');
-                setError('Session recovery failed. Redirecting to login page...');
-                
-                // Redirect to login page after a brief delay
-                setTimeout(() => {
-                  window.location.href = '/login';
-                }, 2000);
-              } catch (recoveryCheckError) {
-                console.error('Settings page: Error checking recovery status:', recoveryCheckError);
-                // Fallback to full page reload if all else fails
-                window.location.reload();
-              }
-            }, 500);
-          } catch (recoveryError) {
-            console.error('Settings page: Error during session recovery attempt:', recoveryError);
-            // Fallback to standard page reload
-            setTimeout(() => {
-              window.location.reload();
-            }, 2000);
-          }
-        }
-        
-        setError(errorMessage);
-      } finally {
-        setIsLoading(false);
+        // Reset loading state
+        localDispatch({ type: 'SET_LOADING', payload: false });
+      } catch (error) {
+        console.error('Error updating profile:', error);
+        localDispatch({ type: 'SET_ERROR', payload: 'Failed to update profile: ' + (error instanceof Error ? error.message : 'Unknown error') });
+        localDispatch({ type: 'SET_LOADING', payload: false });
       }
     }
   };
   
   // Handle appearance settings change
   const handleAppearanceChange = () => {
-    const newDarkMode = !darkMode;
-    setDarkMode(newDarkMode);
+    localDispatch({ type: 'TOGGLE_DARK_MODE' });
     
     if (typeof window !== 'undefined') {
-      if (newDarkMode) {
+      if (!darkMode) {
         document.documentElement.classList.add('dark');
         localStorage.setItem('theme', 'dark');
       } else {
@@ -825,10 +842,7 @@ export default function SettingsPage() {
   
   // Handle notification settings change
   const handleNotificationSettingChange = (setting: keyof typeof notificationSettings) => {
-    setNotificationSettings(prev => ({
-      ...prev,
-      [setting]: !prev[setting]
-    }));
+    localDispatch({ type: 'TOGGLE_NOTIFICATION', payload: setting });
     
     showSuccessNotification('Notification preferences updated');
   };
@@ -836,19 +850,18 @@ export default function SettingsPage() {
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setProfileForm(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    localDispatch({ 
+      type: 'UPDATE_PROFILE_FORM', 
+      payload: { [name]: value }
+    });
   };
   
   // Helper to show success notification
   const showSuccessNotification = (message: string) => {
-    setSuccessMessage(message);
-    setShowSuccess(true);
+    localDispatch({ type: 'SET_SUCCESS_MESSAGE', payload: message });
     
     const timer = setTimeout(() => {
-      setShowSuccess(false);
+      localDispatch({ type: 'HIDE_SUCCESS' });
     }, 3000);
     
     return () => clearTimeout(timer);
@@ -867,17 +880,25 @@ export default function SettingsPage() {
     
     // Check file type
     if (!file.type.match('image.*')) {
-      setError('Please select an image file (JPEG, PNG, etc.)');
+      localDispatch({ type: 'SET_ERROR', payload: 'Please select an image file (JPEG, PNG, etc.)' });
       return;
     }
     
     // Check file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      setError('Image size should be less than 5MB');
+      localDispatch({ type: 'SET_ERROR', payload: 'Image size should be less than 5MB' });
       return;
     }
     
     console.log('Avatar upload: Processing file:', file.name, file.type, Math.round(file.size / 1024), 'KB');
+    
+    // First create a temporary preview for immediate feedback
+    const tempPreview = URL.createObjectURL(file);
+    // Show a temporary preview while processing
+    localDispatch({
+      type: 'UPDATE_PROFILE_FORM',
+      payload: { avatar: tempPreview }
+    });
     
     // Resize and compress the image
     const reader = new FileReader();
@@ -915,35 +936,95 @@ export default function SettingsPage() {
         // Convert to data URL with reduced quality
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         
-        // Pre-cache the avatar
-        const preloadImg = new Image();
-        preloadImg.src = dataUrl;
+        // Clean up the temporary preview
+        URL.revokeObjectURL(tempPreview);
         
-        // Update profile form with resized image
-        setProfileForm(prev => ({
-          ...prev,
-          avatar: dataUrl
-        }));
-        
-        // Immediately store in localStorage for faster access by navbar
+        // Process the image and update state
         try {
-          localStorage.setItem('tempAvatarPreview', dataUrl);
+          console.log('Avatar upload: Image resized and compressed:', {
+            originalSize: file.size,
+            resizedSize: Math.round(dataUrl.length * 0.75 / 1024), // Approximate size in KB
+            dimensions: `${Math.round(width)}x${Math.round(height)}`,
+            dataUrlPreview: dataUrl.substring(0, 50) + '...' // Show beginning of data URL
+          });
+          
+          // Update profile form with resized image
+          localDispatch({
+            type: 'UPDATE_PROFILE_FORM',
+            payload: { avatar: dataUrl }
+          });
+          
+          // Use the dedicated avatar update function that properly manages state
+          updateUserAvatar(dataUrl);
+          
+          // Show success message
+          showSuccessNotification('Profile picture updated successfully');
+          
         } catch (e) {
-          console.error('Failed to store temp avatar in localStorage', e);
+          console.error('Avatar processing error', e);
+          localDispatch({ type: 'SET_ERROR', payload: 'Failed to process avatar image. Please try again.' });
         }
-        
-        console.log('Avatar upload: Image resized and compressed:', {
-          originalSize: file.size,
-          resizedSize: Math.round(dataUrl.length * 0.75 / 1024), // Approximate size in KB
-          dimensions: `${Math.round(width)}x${Math.round(height)}`,
-          dataUrlPreview: dataUrl.substring(0, 50) + '...' // Show beginning of data URL
-        });
       };
       
       img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
+    
+    // Reset the file input so the same file can be selected again if needed
+    e.target.value = '';
   };
+
+  // In the SettingsPage component, add a useEffect to listen for avatar updates
+  useEffect(() => {
+    const handleAvatarUpdated = (event: Event) => {
+      try {
+        // Extract avatar data from CustomEvent if available
+        let avatarData: string | null = null;
+        
+        if (event instanceof CustomEvent && event.detail && event.detail.avatar) {
+          console.log('Settings page: Received avatar data from CustomEvent');
+          avatarData = event.detail.avatar;
+        }
+        
+        // If avatar data wasn't in the event, try to get it from localStorage
+        if (!avatarData) {
+          avatarData = localStorage.getItem('userAvatar') || 
+                    localStorage.getItem('tempAvatarPreview');
+        }
+        
+        if (avatarData && avatarData !== profileForm.avatar) {
+          console.log('Settings page: Updating avatar in profile form');
+          
+          // Update the profile form with the new avatar
+          localDispatch({
+            type: 'UPDATE_PROFILE_FORM',
+            payload: { avatar: avatarData }
+          });
+        }
+      } catch (error) {
+        console.error('Settings page: Error handling avatar update:', error);
+      }
+    };
+    
+    // Listen for avatar update events
+    window.addEventListener('avatarUpdated', handleAvatarUpdated);
+    
+    return () => {
+      window.removeEventListener('avatarUpdated', handleAvatarUpdated);
+    };
+  }, [profileForm.avatar]);
+
+  // Add this useEffect to watch for changes in the currentUser's avatar
+  // and update the profile form accordingly
+  useEffect(() => {
+    if (currentUser?.avatar && profileForm.avatar !== currentUser.avatar) {
+      console.log('Settings page: Updating profile form with new avatar from currentUser');
+      localDispatch({
+        type: 'UPDATE_PROFILE_FORM',
+        payload: { avatar: currentUser.avatar }
+      });
+    }
+  }, [currentUser?.avatar, profileForm.avatar]);
 
   return (
     <Layout key="settings-page">
@@ -957,7 +1038,7 @@ export default function SettingsPage() {
             <span>{successMessage}</span>
             <button 
               className="ml-4 text-green-700"
-              onClick={() => setShowSuccess(false)}
+              onClick={() => localDispatch({ type: 'HIDE_SUCCESS' })}
             >
               <X className="h-4 w-4" />
             </button>
@@ -987,7 +1068,7 @@ export default function SettingsPage() {
               </button>
               <button
                 className="text-red-600 dark:text-red-400"
-                onClick={() => setError('')}
+                onClick={() => localDispatch({ type: 'SET_ERROR', payload: '' })}
               >
                 <X className="h-4 w-4" />
               </button>

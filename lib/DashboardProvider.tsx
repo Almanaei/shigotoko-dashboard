@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useEffect, useState, useRef } from 'react';
 import { API } from '@/lib/api';
 
 // Types
@@ -49,6 +49,7 @@ export interface Message {
   sender: string;
   senderName?: string;
   timestamp: string;
+  senderAvatar?: string | null;
 }
 
 export interface Notification {
@@ -118,11 +119,12 @@ export interface DashboardState {
   projectLogs: ProjectLog[];
   documents: Document[];
   tasks: Task[];
-  stats: Stats;
+  stats: Stats | null;
   notifications: Notification[];
   messages: Message[];
   loading: boolean;
   error: string | null;
+  initialized: boolean;
 }
 
 // Action types
@@ -157,6 +159,7 @@ export const ACTIONS = {
   REMOVE_MESSAGE: 'REMOVE_MESSAGE',
   SET_LOADING: 'SET_LOADING',
   SET_ERROR: 'SET_ERROR',
+  SET_INITIALIZED: 'SET_INITIALIZED',
 } as const;
 
 // Define action types with literal types for better type checking
@@ -193,7 +196,8 @@ type Action =
   | { type: typeof ACTIONS.UPDATE_MESSAGE; payload: { oldId: string; message: Message } }
   | { type: typeof ACTIONS.REMOVE_MESSAGE; payload: string }
   | { type: typeof ACTIONS.SET_LOADING; payload: boolean }
-  | { type: typeof ACTIONS.SET_ERROR; payload: string | null };
+  | { type: typeof ACTIONS.SET_ERROR; payload: string | null }
+  | { type: typeof ACTIONS.SET_INITIALIZED; payload: boolean };
 
 type DashboardDispatch = (action: Action) => void;
 
@@ -215,8 +219,9 @@ const initialState: DashboardState = {
   },
   notifications: [],
   messages: [],
-  loading: false,
-  error: null
+  loading: true,
+  error: null,
+  initialized: false,
 };
 
 // Type-safe reducer that correctly handles each action type
@@ -352,6 +357,8 @@ const dashboardReducer = (state: DashboardState, action: Action): DashboardState
       return { ...state, loading: action.payload };
     case ACTIONS.SET_ERROR:
       return { ...state, error: action.payload };
+    case ACTIONS.SET_INITIALIZED:
+      return { ...state, initialized: action.payload };
     default:
       return state;
   }
@@ -366,162 +373,434 @@ const DashboardContext = createContext<{
   dispatch: () => null,
 });
 
-// Dashboard provider component
+// Create separate context for user/profile data
+export interface UserState {
+  currentUser: User | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const initialUserState: UserState = {
+  currentUser: null,
+  loading: false,
+  error: null,
+};
+
+// Create separate action types for user context
+export const USER_ACTIONS = {
+  SET_CURRENT_USER: 'SET_CURRENT_USER',
+  SET_USER_LOADING: 'SET_USER_LOADING',
+  SET_USER_ERROR: 'SET_USER_ERROR',
+  UPDATE_AVATAR: 'UPDATE_AVATAR',
+} as const;
+
+type UserAction =
+  | { type: typeof USER_ACTIONS.SET_CURRENT_USER; payload: User | null }
+  | { type: typeof USER_ACTIONS.SET_USER_LOADING; payload: boolean }
+  | { type: typeof USER_ACTIONS.SET_USER_ERROR; payload: string | null }
+  | { type: typeof USER_ACTIONS.UPDATE_AVATAR; payload: string };
+
+// User context reducer
+const userReducer = (state: UserState, action: UserAction): UserState => {
+  switch (action.type) {
+    case USER_ACTIONS.SET_CURRENT_USER:
+      return { ...state, currentUser: action.payload };
+    case USER_ACTIONS.SET_USER_LOADING:
+      return { ...state, loading: action.payload };
+    case USER_ACTIONS.SET_USER_ERROR:
+      return { ...state, error: action.payload };
+    case USER_ACTIONS.UPDATE_AVATAR:
+      return {
+        ...state,
+        currentUser: state.currentUser
+          ? { ...state.currentUser, avatar: action.payload }
+          : null,
+      };
+    default:
+      return state;
+  }
+};
+
+// Create user context
+const UserContext = createContext<{
+  state: UserState;
+  dispatch: React.Dispatch<UserAction>;
+}>({
+  state: initialUserState,
+  dispatch: () => null,
+});
+
+// UserProvider component
+export function UserProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(userReducer, initialUserState);
+  
+  // Reference for tracking avatar updates to prevent loops
+  const lastAvatarUpdateRef = useRef<string | null>(null);
+  
+  // Load user data on mount
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        // Set loading state
+        dispatch({ type: USER_ACTIONS.SET_USER_LOADING, payload: true });
+        
+        console.log('UserProvider: Loading user data...');
+        
+        // Check for any cached auth type
+        let authType = '';
+        if (typeof localStorage !== 'undefined') {
+          authType = localStorage.getItem('authType') || '';
+        }
+        if (typeof document !== 'undefined' && document.cookie.includes('employee-session')) {
+          authType = 'employee';
+        }
+        
+        console.log('UserProvider: Using auth type:', authType || 'Default');
+        
+        let userData = null;
+        let authAttemptMade = false;
+        
+        // Try the auth/check endpoint first
+        try {
+          console.log('UserProvider: Trying auth/check endpoint first...');
+          const checkResponse = await fetch('/api/auth/check', {
+            credentials: 'include',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+            }
+          });
+          
+          authAttemptMade = true;
+          
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            
+            if (checkData.status === 'authenticated' && checkData.user) {
+              userData = checkData.user;
+              console.log('UserProvider: Authenticated via auth/check as:', 
+                userData.type, userData.name);
+              
+              // Update auth type for consistency
+              authType = userData.type;
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('authType', userData.type);
+              }
+            }
+          }
+        } catch (checkError) {
+          console.error('UserProvider: Error with auth/check endpoint:', checkError);
+        }
+        
+        // If auth/check failed and we have an employee auth type, try the employee endpoint
+        if (!userData && authType === 'employee') {
+          try {
+            const response = await fetch('/api/auth/employee', {
+              credentials: 'include',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+              }
+            });
+            
+            authAttemptMade = true;
+            
+            if (response.ok) {
+              userData = await response.json();
+              console.log('UserProvider: Authenticated as Employee:', userData.name);
+            }
+          } catch (employeeError) {
+            console.error('UserProvider: Error checking employee authentication:', employeeError);
+          }
+        }
+        
+        // Default to standard user auth if employee auth failed or not specified
+        if (!userData && (!authType || authType === 'user')) {
+          try {
+            userData = await API.auth.getCurrentUser();
+            authAttemptMade = true;
+            
+            if (userData) {
+              console.log('UserProvider: Authenticated as User:', userData.name);
+            }
+          } catch (userError) {
+            console.error('UserProvider: Error checking user authentication:', userError);
+          }
+        }
+        
+        // Check if we have user data from either method
+        if (userData) {
+          // Check for localStorage avatar backup
+          if (!userData.avatar && typeof localStorage !== 'undefined') {
+            const storedAvatar = localStorage.getItem('userAvatar') || 
+                              localStorage.getItem('tempAvatarPreview');
+            if (storedAvatar) {
+              console.log('UserProvider: Found stored avatar in localStorage');
+              userData.avatar = storedAvatar;
+            }
+          }
+          
+          // Update the current user
+          dispatch({
+            type: USER_ACTIONS.SET_CURRENT_USER,
+            payload: userData
+          });
+        } else {
+          // No authenticated user found
+          console.log('UserProvider: No authenticated user found');
+          
+          // Only dispatch if we actually tried to authenticate
+          if (authAttemptMade) {
+            dispatch({
+              type: USER_ACTIONS.SET_CURRENT_USER,
+              payload: null
+            });
+          }
+        }
+        
+        // Clear loading state
+        dispatch({ type: USER_ACTIONS.SET_USER_LOADING, payload: false });
+        
+      } catch (error) {
+        console.error('UserProvider: Error loading user data:', error);
+        dispatch({ type: USER_ACTIONS.SET_USER_ERROR, payload: 'Failed to load user data' });
+        dispatch({ type: USER_ACTIONS.SET_USER_LOADING, payload: false });
+      }
+    };
+    
+    loadUserData();
+  }, []);
+
+  // Separate effect for handling avatar updates
+  useEffect(() => {
+    const handleAvatarUpdated = (event: Event) => {
+      try {
+        // Skip if no user is logged in
+        if (!state.currentUser) return;
+        
+        // Get the latest update time from localStorage
+        const updateTime = localStorage.getItem('lastAvatarUpdate');
+        
+        // Extract avatar data from CustomEvent if available
+        let avatarData: string | null = null;
+        
+        if (event instanceof CustomEvent && event.detail && event.detail.avatar) {
+          console.log('UserProvider: Received avatar data from CustomEvent');
+          avatarData = event.detail.avatar;
+        }
+        
+        // If avatar data wasn't in the event, try to get it from localStorage
+        if (!avatarData) {
+          avatarData = localStorage.getItem('userAvatar') || 
+                     localStorage.getItem('tempAvatarPreview');
+        }
+        
+        // Only process if this is actually a new update and we have avatar data
+        if (updateTime && updateTime !== lastAvatarUpdateRef.current && avatarData) {
+          console.log('UserProvider: Detected new avatar update');
+          
+          if (avatarData && avatarData !== state.currentUser.avatar) {
+            console.log('UserProvider: Updating avatar from event');
+            
+            // Update the ref first to prevent re-processing
+            lastAvatarUpdateRef.current = updateTime;
+            
+            // Use the dedicated avatar update action
+            dispatch({
+              type: USER_ACTIONS.UPDATE_AVATAR,
+              payload: avatarData
+            });
+            
+            // Also update the currentUser object in localStorage to maintain consistency
+            if (typeof localStorage !== 'undefined' && state.currentUser) {
+              try {
+                const currentUserString = localStorage.getItem('currentUser');
+                if (currentUserString) {
+                  const currentUser = JSON.parse(currentUserString);
+                  currentUser.avatar = avatarData;
+                  localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                  console.log('UserProvider: Updated currentUser in localStorage with new avatar');
+                }
+              } catch (e) {
+                console.error('UserProvider: Error updating localStorage currentUser:', e);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('UserProvider: Error handling avatar update:', error);
+      }
+    };
+    
+    // Listen for avatar update events
+    window.addEventListener('avatarUpdated', handleAvatarUpdated);
+    
+    return () => {
+      window.removeEventListener('avatarUpdated', handleAvatarUpdated);
+    };
+  }, [state.currentUser]); // Only re-attach when current user changes
+
+  return (
+    <UserContext.Provider value={{ state, dispatch }}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+
+// Custom hook to use the user context
+export function useUser() {
+  const context = useContext(UserContext);
+  if (!context) {
+    throw new Error('useUser must be used within a UserProvider');
+  }
+  return context;
+}
+
+// Function to update avatar safely
+export function updateUserAvatar(avatar: string) {
+  console.log('updateUserAvatar: Updating avatar in all locations');
+  
+  // Store in localStorage as the single source of truth
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('userAvatar', avatar);
+    localStorage.setItem('lastAvatarUpdate', Date.now().toString());
+  }
+  
+  // Trigger the event to update all components
+  if (typeof window !== 'undefined') {
+    // Dispatch a custom event with the avatar data to ensure all components receive it
+    const avatarEvent = new CustomEvent('avatarUpdated', {
+      detail: { avatar }
+    });
+    window.dispatchEvent(avatarEvent);
+    
+    // Also dispatch the regular event for backward compatibility
+    window.dispatchEvent(new Event('avatarUpdated'));
+  }
+  
+  // Also try to persist the avatar to the server if possible
+  try {
+    // Use a non-blocking approach to avoid slowing down the UI update
+    setTimeout(async () => {
+      try {
+        // Determine if we should use the employee or user API
+        const authType = localStorage.getItem('authType');
+        
+        if (authType === 'employee') {
+          // For employees, you'd use the employee API
+          const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+          if (currentUser && currentUser.id) {
+            await fetch(`/api/employees/${currentUser.id}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ avatar }),
+              credentials: 'include'
+            });
+            console.log('updateUserAvatar: Updated employee avatar on server');
+          }
+        } else {
+          // Use the standard user API
+          await API.auth.updateProfile({ avatar });
+          console.log('updateUserAvatar: Updated user avatar on server');
+        }
+      } catch (error) {
+        console.error('updateUserAvatar: Error saving avatar to server:', error);
+        // The local storage update will still work even if server sync fails
+      }
+    }, 0);
+  } catch (e) {
+    console.error('updateUserAvatar: Error initiating server update:', e);
+  }
+}
+
+// Modify the DashboardProvider to use the UserProvider for user state
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
   const [initialized, setInitialized] = useState(false);
-
-  // Load user data on mount, but only if we're in a browser
+  
+  // Load dashboard data when UserProvider has authenticated
+  const { state: userState } = useUser();
+  
   useEffect(() => {
-    if (typeof window !== 'undefined' && !initialized) {
-      const loadUserData = async () => {
-        try {
-          dispatch({ type: ACTIONS.SET_LOADING, payload: true });
-          
-          console.log('DashboardProvider: Attempting to load user data...');
-          
-          // Check if we have sync cookie - if not, likely not authenticated
-          const hasSyncCookie = document.cookie.split(';').some(c => 
-            c.trim().startsWith('session-token-sync='));
-          
-          // Check for both cookie formats
-          const hasHyphenCookie = document.cookie.split(';').some(c => 
-            c.trim().startsWith('session-token='));
-          
-          const hasUnderscoreCookie = document.cookie.split(';').some(c => 
-            c.trim().startsWith('session_token='));
-          
-          const hasSessionCookie = hasHyphenCookie || hasUnderscoreCookie;
-          
-          console.log('DashboardProvider: Cookie check - session-token-sync:', hasSyncCookie, 
-            'session-token:', hasHyphenCookie, 
-            'session_token:', hasUnderscoreCookie);
-          
-          // Skip the API call if we know we're not authenticated
-          let currentUser = null;
-          if (hasSessionCookie || hasSyncCookie) {
-            // Try to get current user from session
-            console.log('DashboardProvider: Calling API.auth.getCurrentUser()');
-            try {
-              currentUser = await API.auth.getCurrentUser();
-            } catch (authError) {
-              console.error('DashboardProvider: Error getting current user:', authError);
-              
-              // Run auth diagnostics to help troubleshoot the issue
-              console.log('DashboardProvider: Running auth diagnostics...');
-              try {
-                const authStatus = await API.auth.checkAuthStatus();
-                if (authStatus.status !== 'authenticated') {
-                  console.log('DashboardProvider: Auth diagnostic complete - not authenticated');
-                  
-                  // If we have a cookie but no valid session, clear the cookies
-                  if (authStatus.diagnostics?.cookies?.session_hyphen || 
-                      authStatus.diagnostics?.cookies?.session_underscore) {
-                      
-                    console.log('DashboardProvider: Detected cookie without valid session - clearing cookies');
-                    document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                    document.cookie = "session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                    document.cookie = "session-token-sync=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                  }
-                }
-              } catch (diagError) {
-                console.error('DashboardProvider: Error running auth diagnostics:', diagError);
-              }
-              
-              // Check if we were just logged in - if so, we can try to recover
-              const justLoggedIn = localStorage.getItem('justLoggedIn');
-              const storedEmail = localStorage.getItem('userEmail');
-              
-              if (justLoggedIn === 'true' && storedEmail) {
-                console.log('DashboardProvider: Detected recent login, attempting recovery...');
-                
-                // Clear localStorage markers to prevent loops
-                localStorage.removeItem('justLoggedIn');
-                
-                // Alert user about the issue
-                console.warn('DashboardProvider: Session issue detected after login, redirecting back to login');
-                
-                // Redirect back to login for a fresh attempt
-                if (typeof window !== 'undefined') {
-                  window.location.href = `/login?email=${encodeURIComponent(storedEmail)}&recovery=true`;
-                }
-              }
-            }
-          } else {
-            console.log('DashboardProvider: No session cookies found, skipping API call');
-          }
-          
-          if (currentUser) {
-            console.log('DashboardProvider: User data loaded successfully:', currentUser);
-            dispatch({
-              type: ACTIONS.SET_CURRENT_USER,
-              payload: currentUser
-            });
-            
-            console.log('DashboardProvider: Initializing mock data for dashboard components');
-            // Initialize mock data for dashboard components (but not user)
-            initializeMockData(dispatch);
-          } else {
-            console.log('DashboardProvider: No user data found, API returned null');
-            
-            // Check if there's a session token cookie that might be invalid
-            const hasCookie = document.cookie.split(';').some(c => 
-              c.trim().startsWith('session-token='));
-            
-            if (hasCookie) {
-              console.log('DashboardProvider: Found session-token cookie but API returned no user - cookie may be invalid');
-              // Clear the invalid cookie
-              document.cookie = "session-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-              console.log('DashboardProvider: Cleared invalid session-token cookie');
-            } else {
-              console.log('DashboardProvider: No session-token cookie found');
-            }
-            
-            // For development convenience only:
-            if (process.env.NODE_ENV === 'development') {
-              console.log('DashboardProvider: Using mock user for development');
-              // Only set mock user if no real user was found and in development
-              const mockUser: User = {
-                id: 'user-1',
-                name: 'Admin User',
-                email: 'admin@shigotoko.com',
-                avatar: '/avatars/admin.jpg',
-                role: 'Admin'
-              };
-              
-              dispatch({
-                type: ACTIONS.SET_CURRENT_USER,
-                payload: mockUser
-              });
-              
-              console.log('DashboardProvider: Initializing mock data for dashboard components');
-              // Initialize mock data for dashboard components
-              initializeMockData(dispatch);
-            } else {
-              // In production, don't use mock data
-              console.log('DashboardProvider: No authenticated user found, not using mock user in production');
-              // Set currentUser to null to indicate no authentication
-              dispatch({
-                type: ACTIONS.SET_CURRENT_USER,
-                payload: null
-              });
-            }
-          }
-          
-          dispatch({ type: ACTIONS.SET_LOADING, payload: false });
-          setInitialized(true);
-        } catch (error) {
-          console.error('DashboardProvider: Error loading user data:', error);
-          dispatch({ type: ACTIONS.SET_ERROR, payload: 'Failed to load user data' });
-          dispatch({ type: ACTIONS.SET_LOADING, payload: false });
-          setInitialized(true);
-        }
-      };
+    // Only load dashboard data after user authentication is complete
+    if (userState.currentUser && !initialized) {
+      console.log('DashboardProvider: Loading dashboard data for user:', userState.currentUser.name);
       
-      loadUserData();
+      // Initialize with default stats first to avoid null references
+      dispatch({ 
+        type: ACTIONS.SET_STATS, 
+        payload: {
+          totalEmployees: 0,
+          totalRevenue: '$0',
+          turnoverRate: '0%',
+          attendanceRate: '0%',
+          teamKPI: '0%'
+        } 
+      });
+      
+      // Set current user from UserProvider
+      dispatch({
+        type: ACTIONS.SET_CURRENT_USER,
+        payload: userState.currentUser
+      });
+      
+      // Load dashboard data
+      fetchDashboardData(dispatch, userState.currentUser.role === 'employee');
+      
+      // Set initialized
+      setInitialized(true);
+      dispatch({ type: ACTIONS.SET_INITIALIZED, payload: true });
     }
-  }, [initialized]);
-
+  }, [userState.currentUser, initialized]);
+  
+  // Listen for avatar updates
+  useEffect(() => {
+    const handleAvatarUpdated = (event: Event) => {
+      try {
+        if (!state.currentUser) return;
+        
+        // Try to get avatar from event first
+        let avatarData: string | null = null;
+        if (event instanceof CustomEvent && event.detail && event.detail.avatar) {
+          avatarData = event.detail.avatar;
+        }
+        
+        // If not in event, check localStorage
+        if (!avatarData) {
+          avatarData = localStorage.getItem('userAvatar') || 
+                    localStorage.getItem('tempAvatarPreview');
+        }
+        
+        if (avatarData && state.currentUser && state.currentUser.avatar !== avatarData) {
+          console.log('DashboardProvider: Updating currentUser with new avatar');
+          
+          // Create a new user object with the updated avatar
+          const updatedUser = {
+            ...state.currentUser,
+            avatar: avatarData
+          };
+          
+          // Update state with the new user object
+          dispatch({
+            type: ACTIONS.SET_CURRENT_USER,
+            payload: updatedUser
+          });
+        }
+      } catch (error) {
+        console.error('DashboardProvider: Error handling avatar update:', error);
+      }
+    };
+    
+    // Listen for avatar update events
+    window.addEventListener('avatarUpdated', handleAvatarUpdated);
+    
+    return () => {
+      window.removeEventListener('avatarUpdated', handleAvatarUpdated);
+    };
+  }, [state.currentUser]);
+  
   return (
     <DashboardContext.Provider value={{ state, dispatch }}>
       {children}
@@ -886,30 +1165,30 @@ export function initializeMockData(dispatch: DashboardDispatch) {
   const mockMessages: Message[] = [
     {
       id: 'msg-1',
-      content: 'Welcome to the team chat! Feel free to ask any questions.',
-      sender: 'emp-1', // Sarah Chen
-      senderName: 'Sarah Chen',
+      content: "Hi team, does anyone have the latest version of the project report?",
+      sender: 'user-1', // Current user
+      senderName: 'You',
       timestamp: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
     },
     {
       id: 'msg-2',
       content: 'Thanks! I need some help with the onboarding process.',
-      sender: mockUser.id,
-      senderName: mockUser.name,
+      sender: 'user-1', // Current user
+      senderName: 'You',
       timestamp: new Date(Date.now() - 3000000).toISOString() // 50 minutes ago
     },
     {
       id: 'msg-3',
       content: 'Sure, I can help with that. What specific part of the onboarding process do you need assistance with?',
-      sender: 'emp-1', // Sarah Chen
-      senderName: 'Sarah Chen',
+      sender: 'user-1', // Current user
+      senderName: 'You',
       timestamp: new Date(Date.now() - 2700000).toISOString() // 45 minutes ago
     },
     {
       id: 'msg-4',
       content: 'I just added some new design mockups to the shared folder. Can everyone take a look when you get a chance?',
-      sender: 'emp-2', // John Smith
-      senderName: 'John Smith',
+      sender: 'user-1', // Current user
+      senderName: 'You',
       timestamp: new Date(Date.now() - 1800000).toISOString() // 30 minutes ago
     }
   ];
@@ -1050,3 +1329,87 @@ export function initializeMockData(dispatch: DashboardDispatch) {
   dispatch({ type: ACTIONS.SET_NOTIFICATIONS, payload: mockNotifications });
   dispatch({ type: ACTIONS.SET_MESSAGES, payload: mockMessages });
 }
+
+// Add the fetchDashboardData function to load dashboard data
+const fetchDashboardData = (dispatch: DashboardDispatch, isEmployee: boolean = false) => {
+  console.log('DashboardProvider: Loading dashboard data');
+  
+  // Initialize with default stats first to prevent null reference errors
+  dispatch({ 
+    type: ACTIONS.SET_STATS, 
+    payload: {
+      totalEmployees: 0,
+      totalRevenue: '$0',
+      turnoverRate: '0%',
+      attendanceRate: '0%',
+      teamKPI: '0%'
+    }
+  });
+  
+  // Mock notifications
+  const mockNotifications = generateMockNotifications();
+  dispatch({ 
+    type: ACTIONS.SET_NOTIFICATIONS, 
+    payload: mockNotifications 
+  });
+  
+  // Mock stats with actual values
+  const mockStats: Stats = {
+    totalEmployees: 323,
+    totalRevenue: '$8,903.44',
+    turnoverRate: '8%',
+    attendanceRate: '94%',
+    teamKPI: '82.10%'
+  };
+  
+  // Set mock data in state
+  dispatch({ type: ACTIONS.SET_STATS, payload: mockStats });
+  
+  // Mock departments
+  const mockDepartments: Department[] = [
+    {
+      id: 'dept-1',
+      name: 'Engineering',
+      description: 'Software development and engineering',
+      employeeCount: 12,
+      color: '#3b82f6' // blue-500
+    },
+    {
+      id: 'dept-2',
+      name: 'Design',
+      description: 'UI/UX and graphic design',
+      employeeCount: 8,
+      color: '#8b5cf6' // violet-500
+    },
+    {
+      id: 'dept-3',
+      name: 'Marketing',
+      description: 'Digital marketing and brand management',
+      employeeCount: 6,
+      color: '#10b981' // emerald-500
+    },
+    {
+      id: 'dept-4',
+      name: 'HR',
+      description: 'Human resources and talent acquisition',
+      employeeCount: 4,
+      color: '#f59e0b' // amber-500
+    },
+    {
+      id: 'dept-5',
+      name: 'Finance',
+      description: 'Financial planning and accounting',
+      employeeCount: 5,
+      color: '#ef4444' // red-500
+    }
+  ];
+  
+  // Set mock data in state
+  dispatch({ type: ACTIONS.SET_DEPARTMENTS, payload: mockDepartments });
+  
+  // Load other mock data through the existing function
+  initializeMockData(dispatch);
+  
+  // Set loading to false
+  dispatch({ type: ACTIONS.SET_LOADING, payload: false });
+};

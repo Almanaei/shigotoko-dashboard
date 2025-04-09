@@ -14,6 +14,7 @@ interface MessageData {
   sender: string;
   senderName: string;
   timestamp: string;
+  senderAvatar?: string | null;
 }
 
 export default function Chat() {
@@ -27,6 +28,44 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollDownButton, setShowScrollDownButton] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [pollingEnabled, setPollingEnabled] = useState(true);
+  
+  // Load initial messages when component mounts
+  useEffect(() => {
+    const loadInitialMessages = async () => {
+      setIsLoading(true);
+      try {
+        console.log('Chat: Loading initial messages');
+        const initialMessages = await API.messages.getAll(30, 1);
+        console.log(`Chat: Loaded ${initialMessages.length} initial messages`);
+        
+        if (initialMessages.length > 0) {
+          // Update dashboard state with the messages (they should already be sorted oldest-first from the API)
+          dispatch({
+            type: ACTIONS.SET_MESSAGES,
+            payload: initialMessages
+          });
+          
+          // Set the last fetch time to the most recent message
+          const latestMessage = [...initialMessages].sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          )[0];
+          
+          if (latestMessage) {
+            setLastFetchTime(latestMessage.timestamp);
+          }
+        }
+      } catch (err) {
+        console.error('Chat: Error loading initial messages:', err);
+        setError('Failed to load messages. Please refresh the page.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadInitialMessages();
+  }, [dispatch]);
   
   // Use recent messages to determine last fetch time for polling
   useEffect(() => {
@@ -51,7 +90,7 @@ export default function Chat() {
     scrollToBottom();
   }, [messages]);
 
-  // Set up scroll detection
+  // Set up scroll detection and visibility tracking
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -59,30 +98,59 @@ export default function Chat() {
     const handleScroll = () => {
       if (container.scrollHeight - container.scrollTop - container.clientHeight > 100) {
         setShowScrollDownButton(true);
+        // If user scrolls up, count new messages as unread
+        setPollingEnabled(false);
       } else {
         setShowScrollDownButton(false);
+        setUnreadCount(0);
+        setPollingEnabled(true);
+      }
+    };
+
+    // Handle visibility change
+    const handleVisibilityChange = () => {
+      setPollingEnabled(!document.hidden);
+      if (!document.hidden) {
+        // When tab becomes visible again, reset unread count if at bottom
+        const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 100;
+        if (isAtBottom) {
+          setUnreadCount(0);
+        }
       }
     };
 
     container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
   
   // Poll for new messages
   useEffect(() => {
     // Set up polling for new messages every 10 seconds
     const pollInterval = setInterval(() => {
-      if (lastFetchTime) {
+      if (lastFetchTime && pollingEnabled) {
         fetchNewMessages();
       }
     }, 10000); // 10 seconds
     
     return () => clearInterval(pollInterval);
-  }, [lastFetchTime]);
+  }, [lastFetchTime, pollingEnabled]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setUnreadCount(0);
   };
+  
+  // Remove debug logging in production
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production' && messages.length > 0) {
+      console.log(`Chat: Showing ${messages.length} messages`);
+    }
+  }, [messages]);
   
   // Function to fetch only new messages since last fetch
   const fetchNewMessages = async () => {
@@ -93,29 +161,40 @@ export default function Chat() {
       const newMessages = await API.messages.getAfter(lastFetchTime);
       
       if (newMessages.length > 0) {
-        // Sort messages by timestamp
-        const sortedMessages = newMessages
-          .map((msg): MessageData => ({
-            id: msg.id,
-            content: msg.content,
-            sender: msg.sender,
-            senderName: msg.senderName,
-            timestamp: msg.timestamp
-          }))
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        
-        // Update the timestamp of the latest message
-        if (sortedMessages.length > 0) {
-          setLastFetchTime(sortedMessages[sortedMessages.length - 1].timestamp);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`Chat: Received ${newMessages.length} new messages`);
         }
         
-        // Add each new message to the state
-        sortedMessages.forEach(message => {
+        // Track unread messages if user has scrolled up
+        if (showScrollDownButton) {
+          setUnreadCount(prev => prev + newMessages.length);
+        }
+        
+        // Add each new message to the state in the order they were received (which should be chronological)
+        newMessages.forEach(message => {
+          const messageData: MessageData = {
+            id: message.id,
+            content: message.content,
+            sender: message.sender,
+            senderName: message.senderName,
+            timestamp: message.timestamp,
+            senderAvatar: message.senderAvatar
+          };
+          
           dispatch({
             type: ACTIONS.ADD_MESSAGE,
-            payload: message
+            payload: messageData
           });
         });
+        
+        // Update the timestamp of the latest message for the next poll
+        const latestMessage = [...newMessages].sort(
+          (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        )[0];
+        
+        if (latestMessage) {
+          setLastFetchTime(latestMessage.timestamp);
+        }
       }
     } catch (err) {
       console.error("Error polling for new messages:", err);
@@ -162,6 +241,7 @@ export default function Chat() {
             sender: savedMessage.sender,
             senderName: savedMessage.senderName,
             timestamp: savedMessage.timestamp,
+            senderAvatar: savedMessage.senderAvatar
           }
         }
       });
@@ -197,7 +277,7 @@ export default function Chat() {
   };
 
   // Modify this function to better handle our updated Message interface
-  const getSenderInfo = (senderId: string) => {
+  const getSenderInfo = (senderId: string, messageSenderName?: string, messageSenderAvatar?: string | null) => {
     // Check if it's the current user
     if (currentUser && senderId === currentUser.id) {
       return {
@@ -217,10 +297,10 @@ export default function Chat() {
       };
     }
     
-    // Fallback to generic identifier for the message sender
+    // Use the message's senderName and avatar if provided, or fallback to defaults
     return {
-      name: 'Team Member',
-      avatar: '/avatar-placeholder.png',
+      name: messageSenderName || 'Team Member',
+      avatar: messageSenderAvatar || '/avatar-placeholder.png',
       isCurrentUser: false
     };
   };
@@ -239,7 +319,10 @@ export default function Chat() {
   const groupMessagesByDate = () => {
     const groups: {date: string, messages: typeof messages}[] = [];
     
-    messages.forEach(message => {
+    // Clone and ensure messages are in chronological order
+    const orderedMessages = [...messages];
+    
+    orderedMessages.forEach(message => {
       const messageDate = new Date(message.timestamp);
       const dateString = messageDate.toDateString();
       
@@ -253,9 +336,12 @@ export default function Chat() {
       group.messages.push(message);
     });
     
+    // Sort groups by date (oldest first)
+    groups.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
     return groups;
   };
-
+  
   const messageGroups = groupMessagesByDate();
 
   return (
@@ -334,7 +420,7 @@ export default function Chat() {
             
             {/* Messages for this date */}
             {group.messages.map((message, messageIndex) => {
-              const senderInfo = getSenderInfo(message.sender);
+              const senderInfo = getSenderInfo(message.sender, message.senderName, (message as any).senderAvatar);
               const isCurrentUser = senderInfo.isCurrentUser;
               
               // Determine if we should show the avatar (group messages by sender)
@@ -424,6 +510,11 @@ export default function Chat() {
             className="absolute bottom-4 right-4 bg-blue-500 text-white rounded-full p-2 shadow-md hover:bg-blue-600 transition-colors"
             aria-label="Scroll to bottom"
           >
+            {unreadCount > 0 && (
+              <div className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </div>
+            )}
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
@@ -432,6 +523,16 @@ export default function Chat() {
         
         {/* Element to scroll to */}
         <div ref={messagesEndRef} />
+        
+        {/* Loading indicator for initial load */}
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-gray-900/70">
+            <div className="flex flex-col items-center">
+              <div className="h-8 w-8 rounded-full border-2 border-t-blue-500 border-blue-200 animate-spin mb-2"></div>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Loading messages...</span>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Online users */}
