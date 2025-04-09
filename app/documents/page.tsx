@@ -108,9 +108,16 @@ export default function DocumentsPage() {
           type: ACTIONS.SET_DOCUMENTS,
           payload: documentsData as Document[]
         });
+        
+        // Fetch actual employees from the API instead of relying on mock data
+        const employeesData = await API.employees.getAll();
+        dispatch({
+          type: ACTIONS.SET_EMPLOYEES,
+          payload: employeesData
+        });
       } catch (error) {
-        console.error('Error fetching documents:', error);
-        setError('Failed to load documents. Please try again.');
+        console.error('Error fetching data:', error);
+        setError('Failed to load data. Please try again.');
       } finally {
         setIsLoading(false);
       }
@@ -282,16 +289,14 @@ export default function DocumentsPage() {
     
     try {
       // Call API to share document
-      await API.documents.shareWith(selectedDocument.id, userIds);
+      const updatedDoc = await API.documents.shareWith(selectedDocument.id, userIds);
       
-      // Update document in state
+      // Update document in state with the returned data - cast to Document type
       dispatch({
         type: ACTIONS.UPDATE_DOCUMENT,
         payload: {
           id: selectedDocument.id,
-          document: {
-            sharedWith: userIds
-          }
+          document: updatedDoc as Partial<Document>
         }
       });
       
@@ -335,6 +340,25 @@ export default function DocumentsPage() {
       setError('Failed to delete document. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle the date formatting in a single place that's type-safe
+  const getFormattedDate = (dateStr?: string) => {
+    if (!dateStr) return 'N/A';
+    
+    try {
+      const date = new Date(dateStr);
+      return !isNaN(date.getTime()) 
+        ? new Intl.DateTimeFormat('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+          }).format(date)
+        : 'Invalid date';
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
     }
   };
 
@@ -713,13 +737,8 @@ export default function DocumentsPage() {
                     IconComponent = fileTypeIcons.other;
                   }
                   
-                  // Format date
-                  const uploadDate = new Date(document.uploadDate);
-                  const formattedDate = new Intl.DateTimeFormat('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
-                  }).format(uploadDate);
+                  // Format date - use getFormattedDate helper for consistency
+                  const formattedDate = getFormattedDate(document.uploadDate || document.createdAt);
                   
                   // Format file size
                   const formatFileSize = (bytes: number) => {
@@ -785,7 +804,7 @@ export default function DocumentsPage() {
                         )}
                         
                         {/* Shared with */}
-                        {document.sharedWith && document.sharedWith.length > 0 && (
+                        {document.sharedWith && Array.isArray(document.sharedWith) && document.sharedWith.length > 0 && (
                           <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 mb-3">
                             <Users className="h-3 w-3 mr-1" />
                             <span>Shared with {document.sharedWith.length} {document.sharedWith.length === 1 ? 'user' : 'users'}</span>
@@ -920,7 +939,7 @@ export default function DocumentsPage() {
                     Uploaded by
                   </h4>
                   <p className="text-sm text-gray-900 dark:text-gray-100">
-                    {selectedDocument.uploadedBy}
+                    {typeof selectedDocument.uploadedBy === 'string' ? selectedDocument.uploadedBy : selectedDocument.uploadedBy.name}
                   </p>
                 </div>
                 
@@ -929,7 +948,7 @@ export default function DocumentsPage() {
                     Upload date
                   </h4>
                   <p className="text-sm text-gray-900 dark:text-gray-100">
-                    {new Date(selectedDocument.uploadDate).toLocaleDateString()}
+                    {getFormattedDate(selectedDocument.uploadDate || selectedDocument.createdAt)}
                   </p>
                 </div>
                 
@@ -980,15 +999,19 @@ export default function DocumentsPage() {
                       Shared with
                     </h4>
                     <ul className="space-y-2">
-                      {selectedDocument.sharedWith.map(userId => {
-                        const user = employees.find(emp => emp.id === userId);
+                      {Array.isArray(selectedDocument.sharedWith) && selectedDocument.sharedWith.map(userIdOrObject => {
+                        const userId = typeof userIdOrObject === 'string' ? userIdOrObject : userIdOrObject.id;
+                        const userName = typeof userIdOrObject === 'string' 
+                          ? employees.find(emp => emp.id === userId)?.name || 'Unknown User'
+                          : userIdOrObject.name;
+                          
                         return (
                           <li key={userId} className="flex items-center">
                             <div className="w-6 h-6 rounded-full bg-gray-300 dark:bg-gray-700 flex items-center justify-center text-xs font-medium text-gray-700 dark:text-gray-300 mr-2">
-                              {user?.name.charAt(0) || 'U'}
+                              {userName.charAt(0) || 'U'}
                             </div>
                             <span className="text-sm text-gray-900 dark:text-gray-100">
-                              {user?.name || 'Unknown User'}
+                              {userName}
                             </span>
                           </li>
                         );
@@ -1058,7 +1081,10 @@ export default function DocumentsPage() {
                   multiple
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 dark:text-white"
                   size={6}
-                  value={selectedDocument.sharedWith || []}
+                  value={Array.isArray(selectedDocument.sharedWith) ? 
+                    selectedDocument.sharedWith.map(item => 
+                      typeof item === 'string' ? item : item.id
+                    ) : []}
                   onChange={(e) => {
                     const selectedOptions = Array.from(e.target.selectedOptions).map(option => option.value);
                     setSelectedDocument({
@@ -1088,7 +1114,14 @@ export default function DocumentsPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleShareDocument(selectedDocument.sharedWith || [])}
+                  onClick={() => {
+                    // Extract just the IDs for the API call
+                    const userIds = Array.isArray(selectedDocument.sharedWith) ? 
+                      selectedDocument.sharedWith.map(item => 
+                        typeof item === 'string' ? item : item.id
+                      ) : [];
+                    handleShareDocument(userIds);
+                  }}
                   disabled={isLoading}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 rounded-lg flex items-center"
                 >
