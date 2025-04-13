@@ -2,10 +2,12 @@
 
 import { Home, Users, Calendar, MessageSquare, FileText, Settings, LifeBuoy, LogOut, Building2, FolderKanban } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { API } from '@/lib/api';
 import { useDashboard } from '@/lib/DashboardProvider';
+import GlobalAvatar from './GlobalAvatar';
+import { safeJsonParse } from '@/lib/utils/safeJsonParse';
 
 interface CountsData {
   employees: number;
@@ -26,6 +28,45 @@ interface SidebarProps {
   collapsed?: boolean;
 }
 
+/**
+ * Retry function with exponential backoff
+ * @param operation - The async operation to retry
+ * @param maxRetries - Maximum number of retry attempts
+ * @param baseDelay - Base delay in milliseconds
+ * @returns The result of the operation
+ */
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 500
+): Promise<T> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // If this was the last attempt, throw the error
+      if (attempt === maxRetries) {
+        console.error(`Operation failed after ${maxRetries} retries:`, lastError);
+        throw lastError;
+      }
+      
+      // Calculate delay with exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, lastError.message);
+      
+      // Wait before the next attempt
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  // This should never be reached due to the throw in the loop
+  throw lastError || new Error('Unknown error in retry logic');
+}
+
 export default function Sidebar({ collapsed }: SidebarProps = {}) {
   const [isCollapsed, setIsCollapsed] = useState(collapsed || false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -40,90 +81,128 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
   const pathname = usePathname();
   const { state } = useDashboard();
   
-  // Fetch real counts from the database
-  useEffect(() => {
-    async function fetchCounts() {
-      try {
-        setIsLoading(true);
-        // First, use data from the dashboard state if available
-        if (state.employees.length > 0 || state.departments.length > 0 || state.projects.length > 0) {
-          setCounts({
-            employees: state.employees.length,
-            departments: state.departments.length,
-            projects: state.projects.length,
-            messages: state.messages.length,
-            documents: state.documents.length
-          });
-          setIsLoading(false);
-          return;
-        }
+  const fetchCounts = useCallback(async () => {
+    try {
+      // Fetch counts from API endpoints
+      const [employeesResponse, departmentsResponse, projectsResponse, messageCount, documentCount] = await Promise.all([
+        fetch('/api/employees/count', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-cache'
+        }).then(res => res.json()),
+        fetch('/api/departments/count', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-cache'
+        }).then(res => res.json()),
+        fetch('/api/projects/count', {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-cache'
+        }).then(res => res.json()).catch(() => ({ count: state.projects.length })),
+        fetchMessageCount(),
+        fetchDocumentCount()
+      ]);
 
-        // If dashboard state isn't populated yet, fetch directly from the API
-        const response = await fetch('/api/check/db');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.database && data.database.counts) {
-            const { counts: dbCounts } = data.database;
-            setCounts({
-              employees: dbCounts.employees || 0,
-              departments: dbCounts.departments || 0,
-              projects: dbCounts.projects || 0,
-              messages: await fetchMessageCount() || 0,
-              documents: await fetchDocumentCount() || 0
-            });
-          }
-        } else {
-          console.error('Error fetching counts from database');
-          // Fallback to dashboard state counts
-          setCounts({
-            employees: state.employees.length,
-            departments: state.departments.length,
-            projects: state.projects.length,
-            messages: state.messages.length,
-            documents: state.documents.length
-          });
-        }
-      } catch (error) {
-        console.error('Error fetching counts:', error);
-      } finally {
-        setIsLoading(false);
-      }
+      setCounts({
+        employees: employeesResponse?.count || 0,
+        departments: departmentsResponse?.count || 0,
+        projects: projectsResponse?.count || 0,
+        messages: messageCount,
+        documents: documentCount
+      });
+    } catch (error) {
+      console.error("Error fetching counts:", error);
+      // Fallback to counts from state
+      setCounts({
+        employees: state.employees.length,
+        departments: state.departments.length,
+        projects: state.projects.length,
+        messages: state.messages.length,
+        documents: state.documents.length
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    // Fetch message count separately since it requires pagination details
-    async function fetchMessageCount(): Promise<number> {
-      try {
-        const response = await fetch('/api/messages?limit=1&page=1');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.pagination && data.pagination.total) {
-            return data.pagination.total;
-          }
-        }
-        return state.messages.length;
-      } catch (error) {
-        console.error('Error fetching message count:', error);
-        return state.messages.length;
-      }
-    }
-
-    // Fetch document count separately
-    async function fetchDocumentCount(): Promise<number> {
-      try {
-        const response = await fetch('/api/documents');
-        if (response.ok) {
-          const data = await response.json();
-          return Array.isArray(data) ? data.length : 0;
-        }
-        return state.documents.length;
-      } catch (error) {
-        console.error('Error fetching document count:', error);
-        return state.documents.length;
-      }
-    }
-
-    fetchCounts();
   }, [state.employees.length, state.departments.length, state.projects.length, state.messages.length, state.documents.length]);
+
+  const fetchMessageCount = async (): Promise<number> => {
+    try {
+      const response = await retryWithBackoff<Response>(
+        () => fetch('/api/messages/count', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }),
+        3,
+        500
+      );
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          // Handle authentication issues
+          console.error('Authentication error fetching message count');
+          return state.messages.length;
+        }
+        throw new Error(`Error fetching message count: ${response.status}`);
+      }
+
+      const data = await safeJsonParse<{ count: number }>(response, {
+        fallbackValue: { count: 0 },
+        endpoint: '/api/messages/count'
+      });
+
+      return data.count || 0;
+    } catch (error) {
+      console.error('Failed to fetch message count:', error);
+      return state.messages.length;
+    }
+  };
+
+  const fetchDocumentCount = async (): Promise<number> => {
+    try {
+      const response = await retryWithBackoff<Response>(
+        () => fetch('/api/documents/count', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }),
+        3,
+        500
+      );
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          // Handle authentication issues
+          console.error('Authentication error fetching document count');
+          return state.documents.length;
+        }
+        throw new Error(`Error fetching document count: ${response.status}`);
+      }
+
+      const data = await safeJsonParse<{ count: number }>(response, {
+        fallbackValue: { count: 0 },
+        endpoint: '/api/documents/count'
+      });
+
+      return data.count || 0;
+    } catch (error) {
+      console.error('Failed to fetch document count:', error);
+      return state.documents.length;
+    }
+  };
+
+  useEffect(() => {
+    fetchCounts();
+    
+    // Set up an interval to refresh counts every 30 seconds
+    const intervalId = setInterval(fetchCounts, 30000);
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
+  }, [fetchCounts]);
   
   // Update internal state when prop changes
   useEffect(() => {
@@ -268,29 +347,34 @@ export default function Sidebar({ collapsed }: SidebarProps = {}) {
         </div>
       </div>
       
-      <div className="p-4 border-t border-gray-100 dark:border-dark-border">
-        <button 
-          onClick={handleLogout}
-          className="w-full flex items-center px-2 py-2 text-sm font-medium rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
-        >
-          {isLoggingOut ? (
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-red-300 border-t-red-600 dark:border-red-700 dark:border-t-red-400 mx-auto"></div>
-          ) : (
-            <>
-              <LogOut
-                className={`
-                  text-red-500 dark:text-red-400
-                  ${isCollapsed ? 'mx-auto' : 'mr-3'}
-                  h-5 w-5 flex-shrink-0
-                `}
-                aria-hidden="true"
-              />
-              {!isCollapsed && (
-                <span className="flex-1">Log out</span>
-              )}
-            </>
+      <div className="mt-auto border-t border-gray-200 dark:border-dark-border p-4">
+        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+          {!isCollapsed && (
+            <div className="flex items-center">
+              <GlobalAvatar size="sm" />
+              <div className="ml-2">
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {state.currentUser?.name}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {state.currentUser?.role || 'User'}
+                </div>
+              </div>
+            </div>
           )}
-        </button>
+          
+          {isCollapsed && (
+            <GlobalAvatar size="sm" />
+          )}
+          
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <LogOut className="h-5 w-5" />
+          </button>
+        </div>
       </div>
     </div>
   );
